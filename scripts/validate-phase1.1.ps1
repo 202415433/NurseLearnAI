@@ -11,6 +11,9 @@
 #   - écrit son journal dans docs\validation-logs\phase1.1-<date>.log
 # =============================================================================
 $ErrorActionPreference = "Continue"
+# Sortie des outils (node, docker) lue en UTF-8 : évite les accents illisibles dans le journal.
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 $root = (Get-Location).Path
 if (-not (Test-Path "$root\infra\docker-compose.yml")) { Write-Error "Lancer depuis la racine du dépôt."; exit 2 }
 
