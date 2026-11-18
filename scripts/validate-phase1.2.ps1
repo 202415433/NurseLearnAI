@@ -67,7 +67,7 @@ foreach ($k in $envVars.Keys) {
 $PGU = $envVars['POSTGRES_USER']; if (-not $PGU) { $PGU = "nurselearn" }
 $PGDB = $envVars['POSTGRES_DB']; if (-not $PGDB) { $PGDB = "nurselearn" }
 $PGPW = $envVars['POSTGRES_PASSWORD']
-$apiPort = if ($envVars['API_PORT']) { $envVars['API_PORT'] } else { "18000" }
+$apiPort = if ($envVars['API_PORT']) { $envVars['API_PORT'] } else { "28000" }
 $webPort = if ($envVars['WEB_PORT']) { $envVars['WEB_PORT'] } else { "3000" }
 $pgPort  = if ($envVars['POSTGRES_PORT']) { $envVars['POSTGRES_PORT'] } else { "55432" }
 $api = "http://localhost:$apiPort"; $web = "http://localhost:$webPort"
@@ -85,7 +85,7 @@ $r = Run "Version de Docker Compose (2.20+ requis pour compose.yaml à la racine
 $r = Run "Configuration Compose (racine)" { docker compose config --services }
 Result "compose_six_services" ($r.Code -eq 0 -and $r.Out -match 'postgres' -and $r.Out -match 'redis' -and $r.Out -match 's3' -and $r.Out -match 'mailpit' -and $r.Out -match 'api' -and $r.Out -match 'web')
 # Ports : un autre programme Windows qui écoute déjà sur le port de l'API ou du Web empêche leur démarrage
-# (exécution du 18/11 : 127.0.0.1:8000 était occupé par une autre application, d'où le port 18000 par défaut).
+# (18/11 : 8000 et 18000 sont publiés par les conteneurs d'autres projets, d'où le port 28000 par défaut).
 foreach ($pair in @(@('api', $apiPort), @('web', $webPort))) {
     $svc = $pair[0]; $port = [int]$pair[1]
     $owners = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique

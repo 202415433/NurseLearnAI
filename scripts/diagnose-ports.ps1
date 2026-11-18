@@ -4,7 +4,7 @@
 # Lecture seule : n'arrête, ne supprime et ne modifie rien. Durée : quelques secondes.
 # =============================================================================
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$ports = @(3000, 8000, 18000, 55432)
+$ports = @(3000, 8000, 18000, 28000, 55432)
 
 Write-Host "=== 1. Programmes à l'écoute sur $($ports -join ', ') ==="
 foreach ($port in $ports) {
@@ -21,7 +21,7 @@ Write-Host ""; Write-Host "=== 2. Conteneurs Docker (tous projets) et ports publ
 docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 Write-Host ""; Write-Host "=== 3. Ce qui répond sur chaque port (en-têtes seulement) ==="
-foreach ($port in 8000, 18000, 3000) {
+foreach ($port in 8000, 18000, 28000, 3000) {
     Write-Host "--- http://127.0.0.1:$port/health"
     curl.exe -s -i -m 3 "http://127.0.0.1:$port/health" | Select-Object -First 12
 }

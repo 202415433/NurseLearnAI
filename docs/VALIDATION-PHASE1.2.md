@@ -61,7 +61,7 @@ Tests FastAPI, Vitest, `next build`, Playwright/axe, construction des images Doc
 |---|---|---|
 | ✅ `pytest_complet` : **92 réussis** (base, migrations, API, unitaires, pgvector) | — | — |
 | ✅ Vitest : **18/18** ; vérification TypeScript ✅ ; images `api` et `web` construites (`next build` ✅) | — | — |
-| ❌ 1er `docker compose up` : « Bind for 127.0.0.1:8000 failed: port is already allocated » | Un **autre programme** écoute déjà sur 127.0.0.1:8000 (il répond 404 à tout : d'où les faux résultats 404/CORS) | Port de l'API publié par défaut sur **18000** (`API_PORT`) ; le script identifie désormais le programme qui occupe un port |
+| ❌ 1er `docker compose up` : « Bind for 127.0.0.1:8000 failed: port is already allocated » | Un **autre programme** écoute déjà sur 127.0.0.1:8000 (il répond 404 à tout : d'où les faux résultats 404/CORS) | Port de l'API publié par défaut sur **18000**, puis **28000** après l'exécution n° 2 (`API_PORT`) ; le script identifie désormais le programme qui occupe un port |
 | ❌ API « unhealthy » : `failed to resolve host 'postgres'` | Le conteneur `api` resté de la tentative échouée a été réutilisé sans réseau valide | Le script retire les conteneurs `api`/`web` (sans données) avant le démarrage ; l'API réessaie ses migrations 10 fois |
 | ❌ Web et Playwright (`web:3000` introuvable) | Conséquence : le Web attend une API saine | Résolu par les deux points ci-dessus |
 | ℹ️ `professions` absente de la base principale | La base principale n'avait jamais été migrée (la Phase 1.1 utilisait des bases jetables) ; l'API la migre au démarrage | — |
@@ -71,5 +71,5 @@ Tests FastAPI, Vitest, `next build`, Playwright/axe, construction des images Doc
 | Constat (`scripts/diagnose-ports.ps1`) | Interprétation | Suite |
 |---|---|---|
 | 127.0.0.1:8000 tenu par `com.docker.backend` ; répond `server: uvicorn` avec un format d'erreur `{"error":{"code":"HTTP_404"…}}` qui n'est pas celui de NurseLearn | Conteneur Docker d'**un autre projet** | Laissé intact ; NurseLearn utilise 18000 |
-| 127.0.0.1:18000 et ::1:18000 tenus par `wslrelay`, :: par `com.docker.backend`, alors qu'**aucun conteneur ne tourne** (api et web à l'état « Created ») | **Écoute résiduelle** de Docker Desktop / WSL laissée par la tentative précédente : le relais WSL occupe le port avant que Docker ne le publie | Redémarrer Docker Desktop, puis relancer ; le contrôle préalable signale désormais ce cas |
-| Plages réservées par Windows : 5357, 50000–50059, 55088–55187, 62515–63114 | 3000, 18000 et 55432 hors plages | — |
+| 127.0.0.1:18000 et ::1:18000 tenus par `wslrelay`, :: par `com.docker.backend` | D'abord pris pour une écoute résiduelle ; la capture de Docker Desktop montre en réalité le conteneur `euroshadow-api-1` d'un **autre projet**, qui publie `18000:8000` (le gabarit `docker ps` du diagnostic était défectueux et ne l'avait pas affiché) | Port par défaut de NurseLearn : **28000** ; le contrôle préalable nomme désormais le conteneur qui occupe un port |
+| Plages réservées par Windows : 5357, 50000–50059, 55088–55187, 62515–63114 | 3000, 28000 et 55432 hors plages | — |

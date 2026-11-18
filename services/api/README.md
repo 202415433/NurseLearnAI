@@ -20,7 +20,7 @@ Structure : `app/core` (configuration, erreurs RFC 9457, journaux JSON, i18n, pa
 ```powershell
 # Tout en Docker (recommandé), depuis la racine du dépôt
 docker compose up --build -d
-# API : http://localhost:18000/docs   ·   Web : http://localhost:3000/fr
+# API : http://localhost:28000/docs   ·   Web : http://localhost:3000/fr
 ```
 
 ```bash

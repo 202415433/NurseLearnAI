@@ -217,17 +217,17 @@ jobs:
         run: docker compose up --build -d --wait --wait-timeout 300
       - name: API, Web et communication interne
         run: |
-          curl -fsS localhost:18000/ready | grep -q '"database":"ok"'
-          curl -fsS "localhost:18000/api/v1/professions?jurisdiction=CA-QC" | grep -q '"in_preparation":1'
+          curl -fsS localhost:28000/ready | grep -q '"database":"ok"'
+          curl -fsS "localhost:28000/api/v1/professions?jurisdiction=CA-QC" | grep -q '"in_preparation":1'
           curl -fsS localhost:3000/fr/pays | grep -q "Sénégal"
           curl -fsS "localhost:3000/fr/metiers?j=CA-QC" | grep -q "non encore validé"
           docker compose exec -T web node -e "fetch('http://api:8000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-          test -z "$(curl -fsS -H 'Origin: https://evil.example' -D - -o /dev/null localhost:18000/api/v1/countries | grep -i access-control-allow-origin)"
+          test -z "$(curl -fsS -H 'Origin: https://evil.example' -D - -o /dev/null localhost:28000/api/v1/countries | grep -i access-control-allow-origin)"
       - name: Persistance après redémarrage de PostgreSQL
         run: |
           docker compose restart postgres
-          for i in $(seq 1 30); do curl -fsS localhost:18000/ready && break; sleep 2; done
-          curl -fsS "localhost:18000/api/v1/jurisdictions?country=CA" | grep -q '"total":5'
+          for i in $(seq 1 30); do curl -fsS localhost:28000/ready && break; sleep 2; done
+          curl -fsS "localhost:28000/api/v1/jurisdictions?country=CA" | grep -q '"total":5'
       - name: Journaux en cas d'échec
         if: failure()
         run: docker compose logs --tail 100
