@@ -1,0 +1,6 @@
+node_modules/
+.next/
+app/tokens.css
+playwright-report/
+test-results/
+*.tsbuildinfo

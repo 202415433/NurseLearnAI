@@ -68,7 +68,8 @@ def db():
     if d.sql("SELECT count(*) FROM pg_available_extensions WHERE name = 'vector'") == "1":
         d.file(SCHEMA / "0002_pgvector.sql")
     d.file(SCHEMA / "0003_business_rules.sql")   # indépendante des objets de 0002
-    d.file(SEEDS / "0001_reference_data.sql")
+    for seed in sorted(SEEDS.glob("*.sql")):
+        d.file(seed)
     yield d
     d.admin(f"DROP DATABASE IF EXISTS {d.name} WITH (FORCE)")
 

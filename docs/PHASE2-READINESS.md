@@ -5,19 +5,20 @@
 ## Décision
 
 <!-- DECISION -->
-## **NO-GO pour la Phase 2 aujourd'hui — GO pour le lot d'intégration 1.2.**
+## **NO-GO formel pour la Phase 2 aujourd'hui — Phase 1.2 validée sur Windows (52/52).** Il reste la CI GitHub sur `phase-1.2` et les fusions vers `main`, qui dépendent de votre autorisation.
 
-Mise à jour du 18 novembre 2026, 15 h 12, après l'exécution n° 4 (30/30).
+Mise à jour du 18 novembre 2026, 17 h 57 (exécution n° 3 : 52/52).
 
-### Ce qui est désormais prouvé
+### Ce qui est prouvé
 
-L'infrastructure est validée de bout en bout sur votre poste Windows : 4 services Docker sains, persistance, **Alembic réel** (montée, idempotence, retour arrière, réapplication), **pgvector 0.8.7** avec index HNSW, 46 tests de base de données et de règles métier sur PostgreSQL réel, 58 tests d'accessibilité, aucun secret dans les journaux. Les trois critères d'infrastructure (C1–C3) sont remplis.
+- Phase 1.1 : 30/30 sur Windows (deux exécutions) et CI GitHub 4/4 (`phase-1.1`).
+- Phase 1.2 : **52/52 sur Windows** (`scripts/validate-phase1.2.ps1`, commit `102a9c6`) — pile complète par `docker compose up --build -d`, 6 services sains, API et parcours web sur données PostgreSQL, brouillons invisibles, persistance, CORS, ports locaux, pytest 92/92, Vitest 18/18, Playwright + axe 7/7, aucun secret dans les journaux.
 
-### Pourquoi ce n'est pas encore GO pour la Phase 2
+### Ce qui manque pour dire GO
 
-1. **Aucune application exécutable** : ni API, ni interface. La Phase 2 du plan suppose ce socle (lot 1.2 ci-dessous).
-2. **CI GitHub non exécutée sur les corrections** : la branche `phase-1.1` (6 commits) n'est pas poussée ; votre autorisation est requise.
-3. **Un seul dossier de travail** : `C:\NurseLearnAI` (copie hors Git) reste à archiver.
+1. **CI GitHub verte sur `phase-1.2`** (6 jobs, dont la pile Compose et le scénario « programme publié » de démonstration, exécuté en CI seulement) : push à autoriser.
+2. **Fusion** de `phase-1.1` puis `phase-1.2` vers `main` (votre autorisation).
+3. Archivage de l'ancien dossier `C:\NurseLearnAI`.
 
 ## Critères de passage (tous requis)
 
@@ -26,31 +27,28 @@ L'infrastructure est validée de bout en bout sur votre poste Windows : 4 servic
 | C1 | Services Docker démarrés et sains (PostgreSQL+pgvector, Redis, stockage S3 RustFS, Mailpit), volumes persistants, aucun secret dans les journaux | Journal `docs/validation-logs/phase1.1-*.log` sans FAIL | <!-- C1 -->✅ exécution n° 4 : 30/30 |
 | C2 | `alembic upgrade head` → 60 tables, pgvector, HNSW, 0003 ; `upgrade head` idempotent ; `downgrade base` → base vide ; réapplication OK | Même journal + job CI « Alembic réel » | <!-- C2 -->✅ exécution n° 4 (sur votre poste) · ⏳ job CI |
 | C3 | Suite pytest complète **avec** pgvector, 0 test ignoré | Même journal + job CI « Schéma » | <!-- C3 -->✅ 46 réussis, 0 ignoré, pgvector réel (exécution n° 4) |
-| C4 | Branche `phase-1.1` poussée, CI GitHub verte (4 jobs) | Page Actions | ⏳ (votre autorisation de push) |
-| C5 | Lot d'intégration 1.2 livré et vérifié (ci-dessous) | Tests + démonstration | ⏳ |
-| C6 | Un seul dossier de travail local (`C:\NurseLearnAI-git`) | — | ⏳ (vous) |
+| C4 | Branche `phase-1.1` poussée, CI GitHub verte (4 jobs) | Page Actions | ✅ run 44391779337 : 4/4 réussis |
+| C5 | Phase 1.2 livrée et vérifiée | `validate-phase1.2.ps1` sans FAIL + CI verte sur `phase-1.2` | ✅ 52/52 sur Windows · ⏳ CI (push à autoriser) — [`VALIDATION-PHASE1.2.md`](VALIDATION-PHASE1.2.md) |
+| C6 | Un seul dossier de travail local (`C:\NurseLearnAI-git`) | — | ✅ utilisé pour la Phase 1.2 · ⏳ archivage de l'ancien dossier (vous) |
+| C7 | Fusion vers `main` des branches validées | Historique Git | ⏳ (autorisation) |
 
 Non bloquant pour la Phase 2, mais bloquant pour toute **publication** : au moins un relecteur médical qualifié (Québec) inscrit avec le rôle `medical_reviewer`.
 
-## Lot d'intégration 1.2 — « socle exécutable » (proposé)
+## Points à traiter au début de la Phase 2 (issus de la Phase 1.2)
 
-Objectif : une application qui démarre et permet de **choisir son pays et son métier puis de parcourir le catalogue**, sans les fonctionnalités avancées de la Phase 2.
-
-| Inclus | Exclu (reste en Phase 2) |
+| Sujet | Action prévue |
 |---|---|
-| API FastAPI : configuration, erreurs RFC 9457, journaux JSON sans données personnelles, `/health` et `/ready` (PostgreSQL + Redis), OpenAPI | Inscription, connexion, sessions, RBAC applicatif |
-| Modèles SQLAlchemy alignés sur le schéma + test `alembic check` (aucune divergence) | Outils auteur, relecture, publication |
-| Lecture seule : `GET /api/v1/jurisdictions`, `/jurisdictions/{code}/professions`, `/specialties`, `/programs`, `/modules/{id}` (contenu **publié** uniquement) | Quiz, tentatives, progression, tableau de bord |
-| Dockerfile API + service `api` dans docker-compose (profil `app`) | Tuteur IA, simulations, paiements |
-| Next.js : accueil (avec mention « formation, pas un diplôme »), choix du pays, choix du métier, catalogue vide/état « contenu en préparation », FR/EN, thèmes clair/sombre | Lecteur de leçons complet |
-| Structure du module pilote « Hygiène des mains et prévention des infections » pour PAB Québec : module, 4 leçons, objectifs — **statut DRAFT, sans contenu médical rédigé** | Rédaction et relecture du contenu médical |
-| Tests : unitaires API, contrat OpenAPI, e2e Playwright (accueil → pays → métier → catalogue), audit axe ; jobs CI correspondants | — |
-
-Estimation : 2 à 3 semaines pour un développeur. Ce lot correspond aux lots 2.1, 2.2 et à une partie de 2.4/2.7 du plan de Phase 2 ; il les avance, il ne les duplique pas.
+| Limite de débit par visiteur | Proxy d'entrée + `X-Forwarded-For` de confiance (`--forwarded-allow-ips`) ; aujourd'hui limite globale configurable |
+| Modèles SQLAlchemy | Modélisation complète des 60 tables + `alembic check` en CI (lot 2.2) |
+| CSP stricte | Nonce pour le script de thème, en-tête CSP dans Next.js |
+| Linters | Ruff (API), ESLint (web) en CI |
+| `package-lock.json` | Versionner après le premier `npm install` |
+| Relecteur médical | Inscrire au moins un relecteur qualifié (rôle `medical_reviewer`) avant toute publication |
 
 ## Séquence recommandée
 
-1. ~~Vous lancez `scripts/validate-phase1.1.ps1` (C1–C3)~~ — fait, 30/30.
-2. Vous autorisez le push de la branche `phase-1.1` ; je vérifie la CI GitHub (C4).
-3. Vous validez le lot 1.2 ; je le réalise et le vérifie (C5).
-4. Décision GO Phase 2.
+1. ~~Validation Phase 1.1 (30/30) et CI `phase-1.1` (4/4)~~ — fait.
+2. ~~Validation `scripts/validate-phase1.2.ps1`~~ — fait, 52/52.
+3. Vous autorisez le push de `phase-1.2` ; je vérifie la CI GitHub (6 jobs).
+4. Vous autorisez les fusions vers `main`.
+5. Décision GO Phase 2.

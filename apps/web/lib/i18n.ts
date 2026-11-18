@@ -1,0 +1,231 @@
+// Chaînes d'interface FR/EN. Ajouter une langue = ajouter un dictionnaire de même forme
+// (le test tests/i18n.test.ts vérifie que toutes les clés existent dans chaque langue).
+export const locales = ["fr", "en"] as const;
+export type Locale = (typeof locales)[number];
+export const defaultLocale: Locale = "fr";
+
+export function isLocale(value: string): value is Locale {
+  return (locales as readonly string[]).includes(value);
+}
+
+const fr = {
+  meta: {
+    title: "NurseLearn AI — Formation en soins infirmiers et assistance aux soins",
+    description: "Apprenez les soins infirmiers et l'assistance aux soins selon le référentiel de votre pays.",
+  },
+  a11y: { skip: "Aller au contenu", language: "Langue", breadcrumb: "Fil d'Ariane", pagination: "Pagination" },
+  theme: { toDark: "Activer le thème sombre", toLight: "Activer le thème clair", dark: "Sombre", light: "Clair" },
+  disclaimer:
+    "NurseLearn AI est une plateforme de formation. Ses attestations internes ne sont ni un diplôme, ni une licence, ni une autorisation d'exercer.",
+  crumbs: { home: "Accueil", countries: "Pays", jurisdictions: "Juridiction", professions: "Métier", specialties: "Spécialités", programs: "Programmes" },
+  home: {
+    title: "Apprenez les soins, à votre rythme, selon le référentiel de votre pays",
+    lead: "Des parcours structurés du niveau débutant à la préparation professionnelle, pour l'assistance aux soins et les soins infirmiers.",
+    cta: "Commencer",
+    stepsTitle: "Votre parcours en cinq étapes",
+    steps: [
+      { title: "Pays", text: "Canada, France, Sénégal… ou un référentiel international." },
+      { title: "Juridiction", text: "Province ou référentiel : les règles diffèrent d'une juridiction à l'autre." },
+      { title: "Métier", text: "Aucun titre n'est considéré équivalent à un autre d'un pays à l'autre." },
+      { title: "Spécialité", text: "Du socle commun aux spécialités cliniques." },
+      { title: "Programme", text: "Uniquement des programmes relus par un professionnel qualifié." },
+    ],
+    noticeTitle: "À savoir",
+  },
+  countries: {
+    title: "Choisissez votre pays",
+    lead: "Les métiers, les actes permis et les contenus dépendent du pays et de la juridiction.",
+    jurisdictions: (n: number) => (n > 1 ? `${n} référentiels` : "1 référentiel"),
+    frameworkTitle: "Autres référentiels",
+    frameworkText: "Pays francophones et référentiel international général.",
+  },
+  jurisdictions: {
+    title: "Choisissez votre juridiction",
+    frameworkTitle: "Choisissez un référentiel",
+    kinds: { country: "Référentiel national", province: "Province", state: "État", region: "Région", framework: "Référentiel transnational" } as Record<string, string>,
+    empty: "Aucun référentiel actif pour ce pays.",
+  },
+  professions: {
+    title: "Choisissez votre métier",
+    lead: "Les titres ne sont jamais considérés comme équivalents d'un pays ou d'une province à l'autre.",
+    regulated: "Profession réglementée",
+    notRegulated: "Non réglementée par un ordre professionnel",
+    regulator: "Référence",
+    pending: "Informations en cours de validation par un professionnel",
+    choose: "Choisir ce métier",
+    categories: {
+      care_assistant: "Assistance aux soins",
+      practical_nurse: "Soins infirmiers auxiliaires",
+      registered_nurse: "Soins infirmiers",
+      other: "Autre",
+    } as Record<string, string>,
+    empty: "Aucun métier n'est encore défini pour ce référentiel.",
+  },
+  availability: {
+    published: (n: number) => (n > 1 ? `${n} programmes disponibles` : "1 programme disponible"),
+    inPreparation: (n: number) =>
+      n > 1 ? `${n} programmes en préparation, non encore validés` : "1 programme en préparation, non encore validé",
+    none: "Aucun programme pour l'instant",
+  },
+  specialties: {
+    title: "Catalogue des spécialités",
+    lead: "Choisissez une spécialité pour voir les programmes publiés.",
+    all: "Voir tous les programmes de ce métier",
+    count: (n: number) => (n === 0 ? "Aucun programme publié" : n > 1 ? `${n} programmes publiés` : "1 programme publié"),
+    group: "Groupe",
+  },
+  programs: {
+    title: "Programmes disponibles",
+    emptyTitle: "Aucun programme disponible pour le moment",
+    emptyText:
+      "Chaque programme doit être rédigé puis validé par un professionnel qualifié avant d'être publié. Rien n'est publié avant cette relecture.",
+    modules: (n: number) => (n > 1 ? `${n} modules` : n === 1 ? "1 module" : "Aucun module publié"),
+    see: "Voir le programme",
+    levels: {
+      beginner: "Débutant",
+      fundamental: "Fondamental",
+      intermediate: "Intermédiaire",
+      advanced: "Avancé",
+      professional_prep: "Préparation professionnelle",
+    } as Record<string, string>,
+    tiers: { free: "Gratuit", premium: "Premium", organization: "Établissement" } as Record<string, string>,
+    previous: "Page précédente",
+    next: "Page suivante",
+    pageOf: (page: number, pages: number) => `Page ${page} sur ${pages}`,
+  },
+  program: {
+    modulesTitle: "Modules",
+    lessons: "Leçons",
+    minutes: (n: number) => `${n} min`,
+    required: "Obligatoire",
+    optional: "Facultatif",
+    local: "Version propre à la juridiction",
+    reviewDue: "Prochaine révision",
+    noLessons: "Aucune leçon publiée dans ce module pour le moment.",
+    readerSoon: "Le lecteur de leçons sera disponible dans une prochaine version.",
+  },
+  states: {
+    loading: "Chargement…",
+    errorTitle: "Une erreur est survenue",
+    errorText: "Le service est momentanément indisponible. Réessayez dans quelques instants.",
+    retry: "Réessayer",
+    notFoundTitle: "Page introuvable",
+    notFoundText: "Cette page n'existe pas ou n'est pas publiée.",
+    backHome: "Retour à l'accueil",
+    invalid: "Paramètres invalides.",
+  },
+};
+
+export type Dictionary = typeof fr;
+
+const en: Dictionary = {
+  meta: {
+    title: "NurseLearn AI — Nursing and care assistance training",
+    description: "Learn nursing and care assistance according to your country's framework.",
+  },
+  a11y: { skip: "Skip to content", language: "Language", breadcrumb: "Breadcrumb", pagination: "Pagination" },
+  theme: { toDark: "Switch to dark theme", toLight: "Switch to light theme", dark: "Dark", light: "Light" },
+  disclaimer:
+    "NurseLearn AI is a training platform. Its internal attestations are not a diploma, a licence or an authorization to practise.",
+  crumbs: { home: "Home", countries: "Country", jurisdictions: "Jurisdiction", professions: "Occupation", specialties: "Specialties", programs: "Programs" },
+  home: {
+    title: "Learn care at your own pace, following your country's framework",
+    lead: "Structured paths from beginner to professional preparation, for care assistance and nursing.",
+    cta: "Get started",
+    stepsTitle: "Your path in five steps",
+    steps: [
+      { title: "Country", text: "Canada, France, Senegal… or an international framework." },
+      { title: "Jurisdiction", text: "Province or framework: rules differ from one jurisdiction to another." },
+      { title: "Occupation", text: "No title is treated as equivalent to another across countries." },
+      { title: "Specialty", text: "From the common foundation to clinical specialties." },
+      { title: "Program", text: "Only programs reviewed by a qualified professional." },
+    ],
+    noticeTitle: "Good to know",
+  },
+  countries: {
+    title: "Choose your country",
+    lead: "Occupations, permitted acts and content depend on the country and jurisdiction.",
+    jurisdictions: (n: number) => (n > 1 ? `${n} frameworks` : "1 framework"),
+    frameworkTitle: "Other frameworks",
+    frameworkText: "French-speaking countries and the general international framework.",
+  },
+  jurisdictions: {
+    title: "Choose your jurisdiction",
+    frameworkTitle: "Choose a framework",
+    kinds: { country: "National framework", province: "Province", state: "State", region: "Region", framework: "Transnational framework" },
+    empty: "No active framework for this country.",
+  },
+  professions: {
+    title: "Choose your occupation",
+    lead: "Titles are never treated as equivalent from one country or province to another.",
+    regulated: "Regulated profession",
+    notRegulated: "Not regulated by a professional order",
+    regulator: "Reference",
+    pending: "Information pending validation by a professional",
+    choose: "Choose this occupation",
+    categories: {
+      care_assistant: "Care assistance",
+      practical_nurse: "Practical nursing",
+      registered_nurse: "Nursing",
+      other: "Other",
+    },
+    empty: "No occupation is defined yet for this framework.",
+  },
+  availability: {
+    published: (n: number) => (n > 1 ? `${n} programs available` : "1 program available"),
+    inPreparation: (n: number) => (n > 1 ? `${n} programs in preparation, not yet validated` : "1 program in preparation, not yet validated"),
+    none: "No program yet",
+  },
+  specialties: {
+    title: "Specialty catalogue",
+    lead: "Choose a specialty to see published programs.",
+    all: "See all programs for this occupation",
+    count: (n: number) => (n === 0 ? "No published program" : n > 1 ? `${n} published programs` : "1 published program"),
+    group: "Group",
+  },
+  programs: {
+    title: "Available programs",
+    emptyTitle: "No program available yet",
+    emptyText: "Every program must be written and then validated by a qualified professional before publication. Nothing is published before that review.",
+    modules: (n: number) => (n > 1 ? `${n} modules` : n === 1 ? "1 module" : "No published module"),
+    see: "View program",
+    levels: {
+      beginner: "Beginner",
+      fundamental: "Fundamental",
+      intermediate: "Intermediate",
+      advanced: "Advanced",
+      professional_prep: "Professional preparation",
+    },
+    tiers: { free: "Free", premium: "Premium", organization: "Organization" },
+    previous: "Previous page",
+    next: "Next page",
+    pageOf: (page: number, pages: number) => `Page ${page} of ${pages}`,
+  },
+  program: {
+    modulesTitle: "Modules",
+    lessons: "Lessons",
+    minutes: (n: number) => `${n} min`,
+    required: "Required",
+    optional: "Optional",
+    local: "Jurisdiction-specific version",
+    reviewDue: "Next review",
+    noLessons: "No published lesson in this module yet.",
+    readerSoon: "The lesson reader will be available in a later version.",
+  },
+  states: {
+    loading: "Loading…",
+    errorTitle: "Something went wrong",
+    errorText: "The service is temporarily unavailable. Please try again in a moment.",
+    retry: "Try again",
+    notFoundTitle: "Page not found",
+    notFoundText: "This page does not exist or is not published.",
+    backHome: "Back to home",
+    invalid: "Invalid parameters.",
+  },
+};
+
+const dictionaries: Record<Locale, Dictionary> = { fr, en };
+
+export function getDictionary(locale: Locale): Dictionary {
+  return dictionaries[locale];
+}

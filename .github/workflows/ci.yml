@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "phase-*"]
+    branches: [main, "phase-*", "lot-*"]
   pull_request:
 
 permissions:
@@ -88,6 +88,105 @@ jobs:
         run: alembic upgrade head
       - run: $PSQL -d nl_alembic -f database/checks/verify_head.sql
 
+  api:
+    name: API FastAPI (tests sur PostgreSQL + Redis réels)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:ci@localhost:5432/nl_api
+      REDIS_URL: redis://localhost:6379/0
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: psql -h localhost -U postgres -c "CREATE DATABASE nl_api"
+      - name: Migrations et données de référence
+        run: alembic upgrade head && python -m app.seed && python -m app.seed
+      - name: Tests de l'API (intégration PostgreSQL + unitaires)
+        run: python -m pytest -q -rs tests/api tests/unit
+      - name: L'API démarre avec uvicorn et répond
+        run: |
+          uvicorn app.main:create_app --factory --port 8000 &
+          for i in $(seq 1 30); do curl -fsS localhost:8000/ready && break; sleep 1; done
+          curl -fsS "localhost:8000/api/v1/professions?jurisdiction=CA-QC" | grep -q '"code":"pab"'
+          curl -fsS "localhost:8000/api/v1/programs?jurisdiction=CA-QC&profession=pab" | grep -q '"total":0'
+
+  web:
+    name: Web Next.js (composants, build, parcours e2e, accessibilité axe)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:ci@localhost:5432/nl_web
+      API_INTERNAL_URL: http://localhost:8000
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: API de test (migrations, données, démarrage)
+        working-directory: services/api
+        run: |
+          pip install -e .
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+          psql -h localhost -U postgres -c "CREATE DATABASE nl_web"
+          alembic upgrade head && python -m app.seed
+          # Programme publié FICTIF et non médical, pour tester l'écran de détail (CI uniquement).
+          PGOPTIONS="-c nl.allow_demo=on" psql -h localhost -U postgres -d nl_web -v ON_ERROR_STOP=1 -f ../../database/fixtures/e2e_demo_published.sql
+          nohup uvicorn app.main:create_app --factory --port 8000 > /tmp/api.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS localhost:8000/ready && break; sleep 1; done
+        env:
+          PGPASSWORD: ci
+      - name: Installation et build
+        working-directory: apps/web
+        run: npm install && npm run typecheck && npm test && npm run build
+      - name: Navigateur Playwright
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+      - name: Parcours e2e + axe
+        working-directory: apps/web
+        run: npm run test:e2e
+        env:
+          E2E_DEMO: "1"
+      - name: Journal de l'API en cas d'échec
+        if: failure()
+        run: cat /tmp/api.log || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+
   design-tokens:
     name: Design system (contrastes WCAG)
     runs-on: ubuntu-24.04
@@ -103,9 +202,32 @@ jobs:
         run: git diff --exit-code packages/design-tokens/dist
 
   compose:
-    name: Validation docker-compose
+    name: Docker Compose (pile complète, santé, communication entre services)
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
-      - run: cp .env.example .env && docker compose -f infra/docker-compose.yml --env-file .env config -q
+      - name: Configuration (racine et infra)
+        run: |
+          cp .env.example .env
+          docker compose config -q
+          docker compose config --services | sort | tr '\n' ' ' | tee /tmp/services
+          grep -q "api mailpit postgres redis s3 web" /tmp/services
+      - name: docker compose up --build -d (attente de la santé)
+        run: docker compose up --build -d --wait --wait-timeout 300
+      - name: API, Web et communication interne
+        run: |
+          curl -fsS localhost:28000/ready | grep -q '"database":"ok"'
+          curl -fsS "localhost:28000/api/v1/professions?jurisdiction=CA-QC" | grep -q '"in_preparation":1'
+          curl -fsS localhost:3000/fr/pays | grep -q "Sénégal"
+          curl -fsS "localhost:3000/fr/metiers?j=CA-QC" | grep -q "non encore validé"
+          docker compose exec -T web node -e "fetch('http://api:8000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+          test -z "$(curl -fsS -H 'Origin: https://evil.example' -D - -o /dev/null localhost:28000/api/v1/countries | grep -i access-control-allow-origin)"
+      - name: Persistance après redémarrage de PostgreSQL
+        run: |
+          docker compose restart postgres
+          for i in $(seq 1 30); do curl -fsS localhost:28000/ready && break; sleep 2; done
+          curl -fsS "localhost:28000/api/v1/jurisdictions?country=CA" | grep -q '"total":5'
+      - name: Journaux en cas d'échec
+        if: failure()
+        run: docker compose logs --tail 100

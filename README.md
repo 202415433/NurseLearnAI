@@ -9,8 +9,9 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 | Phase | Statut |
 |---|---|
 | 1 — Analyse et architecture | ✅ livrée — [`docs/VALIDATION-PHASE1.md`](docs/VALIDATION-PHASE1.md) |
-| 1.1 — Validation technique | ✅ infrastructure validée 30/30 sur Windows, en attente du push et de la CI — [`docs/VALIDATION-PHASE1.1.md`](docs/VALIDATION-PHASE1.1.md), décision : [`docs/PHASE2-READINESS.md`](docs/PHASE2-READINESS.md) |
-| 2 — MVP fonctionnel | 📋 préparée — voir [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
+| 1.1 — Validation technique | ✅ 30/30 sur Windows et CI GitHub 4/4 — [`docs/VALIDATION-PHASE1.1.md`](docs/VALIDATION-PHASE1.1.md), décision : [`docs/PHASE2-READINESS.md`](docs/PHASE2-READINESS.md) |
+| 1.2 — API publique et parcours web | ✅ 52/52 sur Windows, CI en attente du push — [`docs/VALIDATION-PHASE1.2.md`](docs/VALIDATION-PHASE1.2.md) · [API](docs/API-REFERENCE.md) · [interface](docs/FRONTEND-ARCHITECTURE.md) |
+| 2 — MVP fonctionnel | ⏸️ non autorisée avant validation de la Phase 1.2 — plan : [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
 | 3 à 7 | 🗓️ planifiées — voir [`docs/06-roadmap.md`](docs/06-roadmap.md) |
 
 ## Documentation
@@ -23,14 +24,17 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 6. [Roadmap](docs/06-roadmap.md)
 7. [Plan de la Phase 2](docs/07-plan-phase-2.md)
 8. [Décisions d'architecture (ADR)](docs/adr/)
+9. [Référence de l'API](docs/API-REFERENCE.md)
+10. [Architecture de l'interface web](docs/FRONTEND-ARCHITECTURE.md)
 
 ## Structure
 
 ```
-apps/web            Next.js (Phase 2)          apps/mobile        Expo (Phase 5)
-services/api        FastAPI + Alembic          packages/design-tokens   jetons de design
+apps/web            Next.js (Phase 1.2)          apps/mobile        Expo (Phase 5)
+services/api        FastAPI + Alembic (Phase 1.2) packages/design-tokens  jetons de design
 database            schéma SQL, données de référence, tests de contraintes
-infra               docker-compose (PostgreSQL+pgvector, Redis, RustFS (S3), Mailpit)
+compose.yaml        point d'entrée « docker compose up --build -d »
+infra               docker-compose (PostgreSQL+pgvector, Redis, RustFS (S3), Mailpit, API, Web)
 scripts             utilitaires PowerShell et Bash
 ```
 
@@ -39,7 +43,7 @@ scripts             utilitaires PowerShell et Bash
 Prérequis : [Docker Desktop](https://www.docker.com/products/docker-desktop/), Git, Node.js 22, Python 3.12 (+ `pip install pytest`), client `psql` dans le PATH (installé avec PostgreSQL ou via `winget install PostgreSQL.PostgreSQL.16`).
 
 ```powershell
-cd C:\NurseLearnAI
+cd C:\NurseLearnAI-git               # seul dossier de travail (l'ancien C:\NurseLearnAI n'est plus utilisé)
 Copy-Item .env.example .env          # puis remplacer toutes les valeurs "change-me"
 docker compose -f infra/docker-compose.yml --env-file .env up -d
 .\scripts\db-apply.ps1               # crée le schéma + données de référence
@@ -51,6 +55,16 @@ Validation complète en une commande (Docker, Alembic réel, pgvector, tests, se
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase1.1.ps1
+```
+
+Application complète (Phase 1.2) — PostgreSQL, Redis, RustFS, Mailpit, API et Web :
+
+```powershell
+docker compose up --build -d          # Docker Compose 2.20+ ; volumes de données conservés
+# Web : http://localhost:3000/fr   ·   API : http://localhost:28000/docs
+docker compose ps                     # état et santé des 6 services
+docker compose stop                   # arrêt sans perte de données (ne jamais utiliser « down -v »)
+powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase1.2.ps1   # validation complète (52 contrôles)
 ```
 
 Interfaces locales : console S3 (RustFS) http://localhost:9001/rustfs/console/ · Mailpit http://localhost:8025
