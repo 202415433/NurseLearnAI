@@ -1,6 +1,6 @@
 # Rapport de validation — Phase 1.1
 
-> 18 novembre 2026 · branche `phase-1.1` (non poussée) · base : commit `79ef00f` (Phase 1)
+> 18 novembre 2026 · branche `phase-1.1` (non poussée) · **validation Windows : 30/30 (exécution n° 4)** · base : commit `79ef00f` (Phase 1)
 
 ## 1. Décisions du porteur de projet prises en compte
 
@@ -82,9 +82,24 @@ Résultat : 30 contrôles, **25 réussis**, 5 échecs — tous dus à une seule 
 | Idempotence, données de référence ×2, réapplication | ❌ conséquences de A13 |
 | `downgrade base` / base vide | ⚠️ affichés réussis mais sans valeur (rien n'avait été appliqué) — le script exige désormais une montée réussie |
 
-### Exécution n° 4 — après correction A13
+### Exécution n° 4 — 18 novembre 2026, 15 h 04 (journal `phase1.1-20261118-150434.log`)
 
-**Non encore exécutée.** Alembic réel reste **non vérifié**.
+**Résultat : 30 contrôles, 30 réussis, 0 échec.**
+
+| Contrôle | Résultat |
+|---|---|
+| Docker 29.8.1, Compose v5.5.1, `.env` complet (8/8), paiements désactivés, aucune clé IA | ✅ |
+| 4 services sains : PostgreSQL 16.16 + pgvector 0.8.7, Redis (PING authentifié), RustFS (S3), Mailpit | ✅ |
+| Persistance du volume après redémarrage ; 3 volumes nommés | ✅ |
+| **Alembic réel `upgrade head`** → `0003_business_rules (head)` | ✅ |
+| Contrôle de la tête : **60 tables, 134 clés étrangères, 129 index, 33 déclencheurs, pgvector 0.8.7**, HNSW, fonctions 0003 | ✅ |
+| `upgrade head` rejoué (idempotence) | ✅ |
+| Données de référence appliquées deux fois → 12 métiers | ✅ |
+| **`downgrade base`** → base vide (tables et fonctions) | ✅ |
+| **Réapplication `upgrade head`** → mêmes 60 tables / 134 FK / 129 index / 33 déclencheurs | ✅ |
+| pytest sur PostgreSQL + pgvector réels | ✅ 46 réussis, 0 ignoré |
+| Design system | ✅ 58/58 |
+| Secrets dans les journaux des conteneurs (67 Ko) | ✅ 0 fuite |
 
 ## 5. État par composant
 
@@ -92,10 +107,10 @@ Résultat : 30 contrôles, **25 réussis**, 5 échecs — tous dus à une seule 
 |---|---|---|
 | Schéma (60 tables, contraintes, FK, index) | ✅ vérifié sur PostgreSQL 16 | 44 tests |
 | Migration 0003 (règles métier) | ✅ vérifiée (SQL) | 12 nouveaux tests |
-| Alembic **réel** | <!-- ALEMBIC -->❌ exécutions n° 2 (A10) et n° 3 (A13), corrigés · ⏳ à revérifier | journaux n° 2 et 3 |
-| pgvector (0002) | <!-- PGVECTOR -->✅ pgvector 0.8.7, test pgvector réel (exécutions n° 2 et 3) · ⏳ via Alembic | journal n° 3 |
-| Docker Compose | <!-- DOCKER -->✅ 4 services sains, connexion, persistance, volumes, aucun secret | journal n° 3 |
-| CI GitHub | ✅ commit `79ef00f` : 3 jobs réussis sur GitHub · ⏳ nouvelle CI (4 jobs, dont Alembic réel) validée localement uniquement | page Actions, run #1 |
+| Alembic **réel** | <!-- ALEMBIC -->✅ upgrade, idempotence, downgrade, réapplication (après corrections A10, A13) | journal n° 4 |
+| pgvector (0002) | <!-- PGVECTOR -->✅ pgvector 0.8.7 installé par Alembic, index HNSW, test pgvector réel | journal n° 4 |
+| Docker Compose | <!-- DOCKER -->✅ 4 services sains, connexion, persistance, volumes, aucun secret | journaux n° 3 et 4 |
+| CI GitHub | ✅ commit `79ef00f` : 3 jobs réussis sur GitHub · ⏳ nouvelle CI (4 jobs, dont Alembic réel) **jamais exécutée sur GitHub** : branche `phase-1.1` non poussée | page Actions, run #1 |
 | Design system | ✅ | 58 tests |
 
 ## 6. Anomalies détectées
@@ -143,7 +158,7 @@ Résultat : 30 contrôles, **25 réussis**, 5 échecs — tous dus à une seule 
 
 ## 9. Risques restants
 
-1. Alembic réel et pgvector non prouvés tant que le script Windows ou la CI de `phase-1.1` n'ont pas tourné.
+1. La nouvelle CI (job Alembic réel) n'a pas encore tourné sur GitHub ; la preuve actuelle vient de votre poste Windows uniquement.
 2. Isolation par établissement à l'exécution : dépendra de l'API (filtrage systématique + tests d'accès croisé) ; la sécurité au niveau des lignes (RLS) PostgreSQL est à décider en Phase 2.
 3. Aucun relecteur médical : aucun contenu ne pourra être publié ; le pilote restera en DRAFT.
 4. Données réglementaires (12 métiers) toujours `pending_expert_review`.

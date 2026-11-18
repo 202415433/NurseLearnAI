@@ -9,7 +9,7 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 | Phase | Statut |
 |---|---|
 | 1 — Analyse et architecture | ✅ livrée — [`docs/VALIDATION-PHASE1.md`](docs/VALIDATION-PHASE1.md) |
-| 1.1 — Validation technique | 🔎 en cours — [`docs/VALIDATION-PHASE1.1.md`](docs/VALIDATION-PHASE1.1.md), décision : [`docs/PHASE2-READINESS.md`](docs/PHASE2-READINESS.md) |
+| 1.1 — Validation technique | ✅ infrastructure validée 30/30 sur Windows, en attente du push et de la CI — [`docs/VALIDATION-PHASE1.1.md`](docs/VALIDATION-PHASE1.1.md), décision : [`docs/PHASE2-READINESS.md`](docs/PHASE2-READINESS.md) |
 | 2 — MVP fonctionnel | 📋 préparée — voir [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
 | 3 à 7 | 🗓️ planifiées — voir [`docs/06-roadmap.md`](docs/06-roadmap.md) |
 

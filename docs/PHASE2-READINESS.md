@@ -5,25 +5,27 @@
 ## Décision
 
 <!-- DECISION -->
-## **NO-GO pour la Phase 2 aujourd'hui — GO pour un lot d'intégration 1.2 dès que les vérifications d'infrastructure sont au vert.**
+## **NO-GO pour la Phase 2 aujourd'hui — GO pour le lot d'intégration 1.2.**
 
-### Pourquoi pas GO maintenant
+Mise à jour du 18 novembre 2026, 15 h 12, après l'exécution n° 4 (30/30).
 
-1. **Alembic réel pas encore prouvé** : sur votre PC, l'infrastructure Docker est entièrement validée (C1) et la suite de tests passe sur PostgreSQL + pgvector réels (C3) ; seules les migrations Alembic échouent encore (A10 puis A13, corrigés, à revérifier). La Phase 1.1 a justement trouvé un défaut bloquant (A1) qui aurait fait échouer toutes les migrations réelles. La correction n'est validée qu'avec un substitut.
-2. **Aucune application exécutable** : pas d'API, pas d'interface. La Phase 2 du plan initial suppose ce socle ; la démarrer telle quelle mélangerait mise en place de l'infrastructure applicative et fonctionnalités métier, ce qui rend les écarts difficiles à isoler.
-3. **Corrections non intégrées** : la branche `phase-1.1` n'est ni poussée ni passée en CI sur GitHub.
+### Ce qui est désormais prouvé
 
-### Pourquoi le projet n'est pas bloqué
+L'infrastructure est validée de bout en bout sur votre poste Windows : 4 services Docker sains, persistance, **Alembic réel** (montée, idempotence, retour arrière, réapplication), **pgvector 0.8.7** avec index HNSW, 46 tests de base de données et de règles métier sur PostgreSQL réel, 58 tests d'accessibilité, aucun secret dans les journaux. Les trois critères d'infrastructure (C1–C3) sont remplis.
 
-Le modèle de données est solide et testé (44 tests), les règles métier sont maintenant garanties par la base (habilitations, isolation, attestations, DRAFT sans relecteur), la CI est prête, et il reste peu à faire pour passer au GO.
+### Pourquoi ce n'est pas encore GO pour la Phase 2
+
+1. **Aucune application exécutable** : ni API, ni interface. La Phase 2 du plan suppose ce socle (lot 1.2 ci-dessous).
+2. **CI GitHub non exécutée sur les corrections** : la branche `phase-1.1` (6 commits) n'est pas poussée ; votre autorisation est requise.
+3. **Un seul dossier de travail** : `C:\NurseLearnAI` (copie hors Git) reste à archiver.
 
 ## Critères de passage (tous requis)
 
 | # | Critère | Preuve attendue | État |
 |---|---|---|---|
-| C1 | Services Docker démarrés et sains (PostgreSQL+pgvector, Redis, stockage S3 RustFS, Mailpit), volumes persistants, aucun secret dans les journaux | Journal `docs/validation-logs/phase1.1-*.log` sans FAIL | <!-- C1 -->✅ exécution n° 3 : 4 services sains, persistance, aucun secret |
-| C2 | `alembic upgrade head` → 60 tables, pgvector, HNSW, 0003 ; `upgrade head` idempotent ; `downgrade base` → base vide ; réapplication OK | Même journal + job CI « Alembic réel » | <!-- C2 -->❌ exécutions n° 2 et 3 (A10, A13 — corrigés) · ⏳ exécution n° 4 |
-| C3 | Suite pytest complète **avec** pgvector, 0 test ignoré | Même journal + job CI « Schéma » | <!-- C3 -->✅ 46 réussis, 0 ignoré, pgvector réel (exécution n° 3) |
+| C1 | Services Docker démarrés et sains (PostgreSQL+pgvector, Redis, stockage S3 RustFS, Mailpit), volumes persistants, aucun secret dans les journaux | Journal `docs/validation-logs/phase1.1-*.log` sans FAIL | <!-- C1 -->✅ exécution n° 4 : 30/30 |
+| C2 | `alembic upgrade head` → 60 tables, pgvector, HNSW, 0003 ; `upgrade head` idempotent ; `downgrade base` → base vide ; réapplication OK | Même journal + job CI « Alembic réel » | <!-- C2 -->✅ exécution n° 4 (sur votre poste) · ⏳ job CI |
+| C3 | Suite pytest complète **avec** pgvector, 0 test ignoré | Même journal + job CI « Schéma » | <!-- C3 -->✅ 46 réussis, 0 ignoré, pgvector réel (exécution n° 4) |
 | C4 | Branche `phase-1.1` poussée, CI GitHub verte (4 jobs) | Page Actions | ⏳ (votre autorisation de push) |
 | C5 | Lot d'intégration 1.2 livré et vérifié (ci-dessous) | Tests + démonstration | ⏳ |
 | C6 | Un seul dossier de travail local (`C:\NurseLearnAI-git`) | — | ⏳ (vous) |
@@ -48,7 +50,7 @@ Estimation : 2 à 3 semaines pour un développeur. Ce lot correspond aux lots 2.
 
 ## Séquence recommandée
 
-1. Vous lancez `scripts/validate-phase1.1.ps1` (C1–C3).
+1. ~~Vous lancez `scripts/validate-phase1.1.ps1` (C1–C3)~~ — fait, 30/30.
 2. Vous autorisez le push de la branche `phase-1.1` ; je vérifie la CI GitHub (C4).
 3. Vous validez le lot 1.2 ; je le réalise et le vérifie (C5).
 4. Décision GO Phase 2.
