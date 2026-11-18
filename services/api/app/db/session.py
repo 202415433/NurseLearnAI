@@ -16,6 +16,6 @@ def create_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]
 
 
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
-    """Session en lecture seule pour le lot 1.2 (aucune écriture exposée)."""
+    """Session en lecture seule pour le Phase 1.2 (aucune écriture exposée)."""
     async with request.app.state.sessionmaker() as session:
         yield session

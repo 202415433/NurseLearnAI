@@ -24,7 +24,8 @@ def negotiate_locale(accept_language: str | None, supported: list[str], default:
                 q = float(params.strip()[2:])
             except ValueError:
                 q = 0.0
-        candidates.append((q, lang.strip().lower()[:2]))
+        if q > 0:   # q=0 signifie « non acceptable »
+            candidates.append((q, lang.strip().lower()[:2]))
     for _, lang in sorted(candidates, key=lambda c: -c[0]):
         if lang in supported:
             return lang

@@ -27,7 +27,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         <h2 id="etapes" className="text-2xl font-semibold">
           {t.home.stepsTitle}
         </h2>
-        <ol className="grid gap-4 sm:grid-cols-3">
+        <ol className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {t.home.steps.map((step, i) => (
             <li key={step.title} className="rounded-lg border border-border bg-surface p-5">
               <span aria-hidden="true" className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-accent-fill font-bold text-on-accent-fill">

@@ -1,7 +1,8 @@
-"""Point d'entrée de l'API NurseLearn AI (lot 1.2 : santé, référentiels, catalogue)."""
+"""Point d'entrée de l'API NurseLearn AI (Phase 1.2 : santé, référentiels, catalogue)."""
 from __future__ import annotations
 
 import logging
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -13,6 +14,7 @@ from sqlalchemy import text
 from app.core.config import API_VERSION, Settings, get_settings
 from app.core.errors import install_error_handlers, problem_response
 from app.core.logging import RequestContextMiddleware, configure_logging
+from app.core.ratelimit import RateLimitMiddleware
 from app.db.session import create_engine, create_sessionmaker
 from app.domains.catalog.router import router as catalog_router
 from app.domains.reference.router import router as reference_router
@@ -58,6 +60,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=False,
                        allow_methods=["GET"], allow_headers=["Accept-Language", "X-Request-ID"],
                        expose_headers=["X-Request-ID", "Content-Language"])
+    app.add_middleware(RateLimitMiddleware, per_minute=settings.rate_limit_per_minute, salt=secrets.token_hex(16))
     app.add_middleware(RequestContextMiddleware)
 
     @app.middleware("http")

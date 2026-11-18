@@ -1,0 +1,10 @@
+# Point d'entrée Docker Compose à la racine du dépôt :
+#   docker compose up --build -d     (démarre PostgreSQL, Redis, RustFS, Mailpit, l'API et le Web)
+# La définition réelle reste dans infra/docker-compose.yml. Le nom de projet « nurselearn » est
+# conservé : les volumes de données existants (pgdata, redisdata, s3data) sont réutilisés.
+# Nécessite Docker Compose 2.20 ou plus récent (Docker Desktop à jour).
+name: nurselearn
+
+include:
+  - path: infra/docker-compose.yml
+    env_file: .env

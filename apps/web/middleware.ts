@@ -18,7 +18,12 @@ function preferredLocale(request: NextRequest): string {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const first = pathname.split("/")[1] ?? "";
-  if (isLocale(first)) return NextResponse.next();
+  if (isLocale(first)) {
+    // Transmet la langue aux pages qui ne reçoivent pas les paramètres de route (not-found).
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-nl-locale", first);
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
   const url = request.nextUrl.clone();
   url.pathname = `/${preferredLocale(request)}${pathname === "/" ? "" : pathname}`;
   return NextResponse.redirect(url);

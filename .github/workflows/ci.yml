@@ -121,16 +121,17 @@ jobs:
       - run: psql -h localhost -U postgres -c "CREATE DATABASE nl_api"
       - name: Migrations et données de référence
         run: alembic upgrade head && python -m app.seed && python -m app.seed
-      - name: Tests de l'API
-        run: python -m pytest -q -rs tests/api
+      - name: Tests de l'API (intégration PostgreSQL + unitaires)
+        run: python -m pytest -q -rs tests/api tests/unit
       - name: L'API démarre avec uvicorn et répond
         run: |
           uvicorn app.main:create_app --factory --port 8000 &
           for i in $(seq 1 30); do curl -fsS localhost:8000/ready && break; sleep 1; done
-          curl -fsS localhost:8000/api/v1/jurisdictions/CA-QC/professions | grep -q '"code":"pab"'
+          curl -fsS "localhost:8000/api/v1/professions?jurisdiction=CA-QC" | grep -q '"code":"pab"'
+          curl -fsS "localhost:8000/api/v1/programs?jurisdiction=CA-QC&profession=pab" | grep -q '"total":0'
 
   web:
-    name: Web Next.js (build, parcours e2e, accessibilité axe)
+    name: Web Next.js (composants, build, parcours e2e, accessibilité axe)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -160,19 +161,23 @@ jobs:
           sudo apt-get update && sudo apt-get install -y postgresql-client
           psql -h localhost -U postgres -c "CREATE DATABASE nl_web"
           alembic upgrade head && python -m app.seed
+          # Programme publié FICTIF et non médical, pour tester l'écran de détail (CI uniquement).
+          PGOPTIONS="-c nl.allow_demo=on" psql -h localhost -U postgres -d nl_web -v ON_ERROR_STOP=1 -f ../../database/fixtures/e2e_demo_published.sql
           nohup uvicorn app.main:create_app --factory --port 8000 > /tmp/api.log 2>&1 &
           for i in $(seq 1 30); do curl -fsS localhost:8000/ready && break; sleep 1; done
         env:
           PGPASSWORD: ci
       - name: Installation et build
         working-directory: apps/web
-        run: npm install && npm run typecheck && npm run build
+        run: npm install && npm run typecheck && npm test && npm run build
       - name: Navigateur Playwright
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
       - name: Parcours e2e + axe
         working-directory: apps/web
         run: npm run test:e2e
+        env:
+          E2E_DEMO: "1"
       - name: Journal de l'API en cas d'échec
         if: failure()
         run: cat /tmp/api.log || true
@@ -197,11 +202,32 @@ jobs:
         run: git diff --exit-code packages/design-tokens/dist
 
   compose:
-    name: Validation docker-compose
+    name: Docker Compose (pile complète, santé, communication entre services)
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
-      - run: cp .env.example .env && docker compose -f infra/docker-compose.yml --env-file .env config -q
-      - name: Images de l'application (API, Web)
-        run: cp .env.example .env && docker compose -f infra/docker-compose.yml --env-file .env --profile app build
+      - name: Configuration (racine et infra)
+        run: |
+          cp .env.example .env
+          docker compose config -q
+          docker compose config --services | sort | tr '\n' ' ' | tee /tmp/services
+          grep -q "api mailpit postgres redis s3 web" /tmp/services
+      - name: docker compose up --build -d (attente de la santé)
+        run: docker compose up --build -d --wait --wait-timeout 300
+      - name: API, Web et communication interne
+        run: |
+          curl -fsS localhost:8000/ready | grep -q '"database":"ok"'
+          curl -fsS "localhost:8000/api/v1/professions?jurisdiction=CA-QC" | grep -q '"in_preparation":1'
+          curl -fsS localhost:3000/fr/pays | grep -q "Sénégal"
+          curl -fsS "localhost:3000/fr/metiers?j=CA-QC" | grep -q "non encore validé"
+          docker compose exec -T web node -e "fetch('http://api:8000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+          test -z "$(curl -fsS -H 'Origin: https://evil.example' -D - -o /dev/null localhost:8000/api/v1/countries | grep -i access-control-allow-origin)"
+      - name: Persistance après redémarrage de PostgreSQL
+        run: |
+          docker compose restart postgres
+          for i in $(seq 1 30); do curl -fsS localhost:8000/ready && break; sleep 2; done
+          curl -fsS "localhost:8000/api/v1/jurisdictions?country=CA" | grep -q '"total":5'
+      - name: Journaux en cas d'échec
+        if: failure()
+        run: docker compose logs --tail 100

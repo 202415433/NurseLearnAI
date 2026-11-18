@@ -1,62 +1,44 @@
-import Link from "next/link";
-import { notFound } from "next/navigation";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { ChoiceCard } from "@/components/ChoiceCard";
+import { EmptyState } from "@/components/EmptyState";
+import { api } from "@/lib/api";
+import { getDictionary } from "@/lib/i18n";
+import { localeFrom } from "@/lib/route";
 
-import { Notice } from "@/components/Notice";
-import { api, type Jurisdiction } from "@/lib/api";
-import { getDictionary, isLocale } from "@/lib/i18n";
+export const dynamic = "force-dynamic";
 
-const GROUP_OF: Record<string, "province" | "country" | "framework"> = {
-  province: "province",
-  state: "province",
-  region: "province",
-  country: "country",
-  framework: "framework",
-};
-
-export default async function JurisdictionsPage({ params }: { params: Promise<{ locale: string }> }) {
-  const { locale } = await params;
-  if (!isLocale(locale)) notFound();
+export default async function CountriesPage({ params }: { params: Promise<{ locale: string }> }) {
+  const locale = await localeFrom(params);
   const t = getDictionary(locale);
-
-  let failed = false;
-  let items: Jurisdiction[] = [];
-  try {
-    items = await api.jurisdictions(locale);
-  } catch {
-    failed = true;
-  }
+  const countries = await api.countries(locale);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold">{t.jurisdictions.title}</h1>
-      <p className="text-fg-muted">{t.jurisdictions.lead}</p>
-      {failed ? (
-        <Notice tone="danger">{t.errors.unavailable}</Notice>
+    <div>
+      <Breadcrumbs label={t.a11y.breadcrumb} items={[{ label: t.crumbs.home, href: `/${locale}` }, { label: t.crumbs.countries }]} />
+      <h1 className="text-3xl font-bold">{t.countries.title}</h1>
+      <p className="mt-2 max-w-prose text-fg-muted">{t.countries.lead}</p>
+      {countries.items.length === 0 ? (
+        <div className="mt-6">
+          <EmptyState title={t.jurisdictions.empty} />
+        </div>
       ) : (
-        (["province", "country", "framework"] as const).map((group) => {
-          const list = items.filter((j) => GROUP_OF[j.kind] === group);
-          if (list.length === 0) return null;
-          return (
-            <section key={group} aria-labelledby={`g-${group}`} className="space-y-3">
-              <h2 id={`g-${group}`} className="text-xl font-semibold">
-                {t.jurisdictions.groups[group]}
-              </h2>
-              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {list.map((j) => (
-                  <li key={j.code}>
-                    <Link
-                      href={`/${locale}/metier?j=${encodeURIComponent(j.code)}`}
-                      data-testid={`jurisdiction-${j.code}`}
-                      className="flex min-h-11 items-center rounded-lg border border-border bg-surface px-4 py-3 font-medium hover:border-primary hover:bg-primary-soft"
-                    >
-                      {j.name}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          );
-        })
+        <ul className="mt-6 grid gap-4 sm:grid-cols-2" data-testid="country-list">
+          {countries.items.map((c) => (
+            <ChoiceCard
+              key={c.code}
+              testId={`country-${c.code}`}
+              href={`/${locale}/juridictions?pays=${encodeURIComponent(c.code)}`}
+              title={c.name}
+              description={t.countries.jurisdictions(c.jurisdiction_count)}
+            />
+          ))}
+          <ChoiceCard
+            testId="country-framework"
+            href={`/${locale}/juridictions?portee=cadre`}
+            title={t.countries.frameworkTitle}
+            description={t.countries.frameworkText}
+          />
+        </ul>
       )}
     </div>
   );

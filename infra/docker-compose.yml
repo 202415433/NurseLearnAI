@@ -1,7 +1,7 @@
 # NurseLearn AI — services d'infrastructure pour le développement local
-# (PostgreSQL+pgvector, Redis, stockage S3 RustFS, Mailpit).
-# Démarrage :  docker compose -f infra/docker-compose.yml --env-file .env up -d
-# Application (lot 1.2) :  docker compose -f infra/docker-compose.yml --env-file .env --profile app up -d --build
+# (PostgreSQL+pgvector, Redis, stockage S3 RustFS, Mailpit) et application (API FastAPI, Web Next.js).
+# Démarrage complet depuis la racine du dépôt :  docker compose up --build -d
+# (équivalent :  docker compose -f infra/docker-compose.yml --env-file .env up --build -d)
 name: nurselearn
 
 services:
@@ -69,8 +69,7 @@ services:
       - "127.0.0.1:1025:1025"
       - "127.0.0.1:8025:8025"
 
-  api:                                      # API FastAPI (lot 1.2)
-    profiles: ["app"]
+  api:                                      # API FastAPI (Phase 1.2)
     build:
       context: ..
       dockerfile: services/api/Dockerfile
@@ -84,13 +83,16 @@ services:
       APP_ENV: ${APP_ENV:-development}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-nurselearn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nurselearn}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      CORS_ORIGINS: '["http://localhost:3000"]'
+      # Origines autorisées à appeler l'API depuis un navigateur (GET uniquement).
+      CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost:3000","http://127.0.0.1:3000"]}'
       LOG_LEVEL: INFO
+      # Le serveur Web appelle l'API pour tous les visiteurs (même adresse réseau) : la limite est donc
+      # globale en local. En production, la limite par visiteur se fera au proxy d'entrée (voir PHASE2-READINESS).
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-3000}
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
 
-  web:                                      # Interface Next.js (lot 1.2)
-    profiles: ["app"]
+  web:                                      # Interface Next.js (Phase 1.2)
     build:
       context: ..
       dockerfile: apps/web/Dockerfile
@@ -99,7 +101,13 @@ services:
       api:
         condition: service_healthy
     environment:
-      API_INTERNAL_URL: http://api:8000
+      API_INTERNAL_URL: http://api:8000      # réseau interne Docker : le navigateur ne voit jamais l'API
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/fr').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"
 

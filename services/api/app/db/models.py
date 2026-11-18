@@ -1,4 +1,4 @@
-"""Modèles SQLAlchemy du périmètre du lot 1.2 (référentiels et catalogue).
+"""Modèles SQLAlchemy du périmètre du Phase 1.2 (référentiels et catalogue).
 
 Le schéma fait foi (database/schema, ADR-0002) : ces modèles en sont une
 projection en lecture. Le test `test_models_match_schema` vérifie que chaque
@@ -30,11 +30,17 @@ class Locale(Base):
     is_active: Mapped[bool] = mapped_column(Boolean)
 
 
+class Country(Base):
+    __tablename__ = "countries"
+    code: Mapped[str] = mapped_column(String(2), primary_key=True)
+    name_i18n: Mapped[dict] = mapped_column(JSONB)
+
+
 class Jurisdiction(Base):
     __tablename__ = "jurisdictions"
     id: Mapped[uuid.UUID] = _uuid_pk()
     code: Mapped[str] = mapped_column(Text, unique=True)
-    country_code: Mapped[str | None] = mapped_column(String(2))
+    country_code: Mapped[str | None] = mapped_column(String(2), ForeignKey("countries.code"))
     parent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("jurisdictions.id"))
     kind: Mapped[str] = mapped_column(Text)
     name_i18n: Mapped[dict] = mapped_column(JSONB)

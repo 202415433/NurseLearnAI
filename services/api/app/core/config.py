@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     default_locale: str = "fr"
     supported_locales: list[str] = ["fr", "en"]
     log_level: str = "INFO"
+    # Requêtes /api/ autorisées par minute et par client (0 = désactivé). Nécessite Redis.
+    rate_limit_per_minute: int = 300
 
     @property
     def async_database_url(self) -> str:
