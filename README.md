@@ -61,10 +61,10 @@ Application complète (Phase 1.2) — PostgreSQL, Redis, RustFS, Mailpit, API et
 
 ```powershell
 docker compose up --build -d          # Docker Compose 2.20+ ; volumes de données conservés
-# Web : http://localhost:3000/fr   ·   API : http://localhost:8000/docs
+# Web : http://localhost:3000/fr   ·   API : http://localhost:18000/docs
 docker compose ps                     # état et santé des 6 services
 docker compose stop                   # arrêt sans perte de données (ne jamais utiliser « down -v »)
-powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase1.2.ps1   # validation complète (46 contrôles)
+powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase1.2.ps1   # validation complète (52 contrôles)
 ```
 
 Interfaces locales : console S3 (RustFS) http://localhost:9001/rustfs/console/ · Mailpit http://localhost:8025

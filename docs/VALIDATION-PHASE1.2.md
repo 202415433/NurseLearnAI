@@ -34,7 +34,7 @@ Hors périmètre (règles respectées) : Phase 2, authentification, tuteur IA, p
 | `services/api/tests/api` (21 tests, dont paramétrés) | santé, OpenAPI GET seul, pays, juridictions et filtres, pagination, 422 stricts, métiers par juridiction (QC/ON/FR/SN), disponibilité, spécialités, **brouillons invisibles**, chemin publié (données fictives non médicales créées puis supprimées), **isolation des établissements**, aucun secret, 500 générique, limite de débit, CORS, modèles ↔ schéma | script · CI (PostgreSQL + Redis réels) |
 | `apps/web/tests` (Vitest, 18 tests) | composants (badges, fil d'Ariane, cartes, pagination, états vides), client API, parité des dictionnaires FR/EN, mention obligatoire | script · CI |
 | `apps/web/e2e` (Playwright + axe, 8 scénarios) | parcours Québec complet, ON/FR/SN, référentiels, changement de langue, thème sombre, paramètres invalides → introuvable, détail d'un programme publié (données de démonstration **CI uniquement**) | script · CI |
-| `scripts/validate-phase1.2.ps1` (46 contrôles) | pile complète, santé des 6 services, API, CORS, ports Windows, communication interne, persistance après redémarrage, migrations, toutes les suites ci-dessus, secrets | votre PC |
+| `scripts/validate-phase1.2.ps1` (52 contrôles) | ports libres, pile complète, santé des 6 services, API, CORS, ports Windows, communication interne, persistance après redémarrage, migrations, toutes les suites ci-dessus, secrets | votre PC |
 | CI `compose` | `docker compose up --build -d --wait`, API, Web, appel interne web → api, CORS, persistance | GitHub (après push) |
 
 Les données de démonstration du test de détail (`database/fixtures/e2e_demo_published.sql`) sont fictives, non médicales, rattachées à Ontario/PSW, et **refusent de s'exécuter** sans `nl.allow_demo=on` : elles ne peuvent pas être chargées par erreur en développement ou en production.
@@ -54,6 +54,17 @@ Les données de démonstration du test de détail (`database/fixtures/e2e_demo_p
 Tests FastAPI, Vitest, `next build`, Playwright/axe, construction des images Docker. Ils seront prouvés par `scripts/validate-phase1.2.ps1` sur votre PC **ou** par la CI GitHub après push de `phase-1.2` (**autorisation requise**).
 
 <!-- RESULTATS -->
+
+### Exécution n° 1 sur votre poste (18/11/2026, 16 h 22) — 13/50
+
+| Constat | Cause | Correction (commit suivant) |
+|---|---|---|
+| ✅ `pytest_complet` : **92 réussis** (base, migrations, API, unitaires, pgvector) | — | — |
+| ✅ Vitest : **18/18** ; vérification TypeScript ✅ ; images `api` et `web` construites (`next build` ✅) | — | — |
+| ❌ 1er `docker compose up` : « Bind for 127.0.0.1:8000 failed: port is already allocated » | Un **autre programme** écoute déjà sur 127.0.0.1:8000 (il répond 404 à tout : d'où les faux résultats 404/CORS) | Port de l'API publié par défaut sur **18000** (`API_PORT`) ; le script identifie désormais le programme qui occupe un port |
+| ❌ API « unhealthy » : `failed to resolve host 'postgres'` | Le conteneur `api` resté de la tentative échouée a été réutilisé sans réseau valide | Le script retire les conteneurs `api`/`web` (sans données) avant le démarrage ; l'API réessaie ses migrations 10 fois |
+| ❌ Web et Playwright (`web:3000` introuvable) | Conséquence : le Web attend une API saine | Résolu par les deux points ci-dessus |
+| ℹ️ `professions` absente de la base principale | La base principale n'avait jamais été migrée (la Phase 1.1 utilisait des bases jetables) ; l'API la migre au démarrage | — |
 
 ## 4. Critères d'acceptation
 
@@ -78,7 +89,7 @@ git switch phase-1.2
 docker compose up --build -d                      # toute la pile
 powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase1.2.ps1
 start http://localhost:3000/fr                    # interface
-start http://localhost:8000/docs                  # API (OpenAPI)
+start http://localhost:18000/docs                  # API (OpenAPI)
 docker compose ps                                 # état et santé
 docker compose logs -f api web                    # journaux
 docker compose stop                               # arrêt SANS perte de données

@@ -67,7 +67,7 @@ foreach ($k in $envVars.Keys) {
 $PGU = $envVars['POSTGRES_USER']; if (-not $PGU) { $PGU = "nurselearn" }
 $PGDB = $envVars['POSTGRES_DB']; if (-not $PGDB) { $PGDB = "nurselearn" }
 $PGPW = $envVars['POSTGRES_PASSWORD']
-$apiPort = if ($envVars['API_PORT']) { $envVars['API_PORT'] } else { "8000" }
+$apiPort = if ($envVars['API_PORT']) { $envVars['API_PORT'] } else { "18000" }
 $webPort = if ($envVars['WEB_PORT']) { $envVars['WEB_PORT'] } else { "3000" }
 $pgPort  = if ($envVars['POSTGRES_PORT']) { $envVars['POSTGRES_PORT'] } else { "55432" }
 $api = "http://localhost:$apiPort"; $web = "http://localhost:$webPort"
@@ -84,6 +84,25 @@ Result "branche_phase_1_2" ((git branch --show-current 2>$null) -eq "phase-1.2")
 $r = Run "Version de Docker Compose (2.20+ requis pour compose.yaml à la racine)" { docker compose version --short }
 $r = Run "Configuration Compose (racine)" { docker compose config --services }
 Result "compose_six_services" ($r.Code -eq 0 -and $r.Out -match 'postgres' -and $r.Out -match 'redis' -and $r.Out -match 's3' -and $r.Out -match 'mailpit' -and $r.Out -match 'api' -and $r.Out -match 'web')
+# Ports : un autre programme Windows qui écoute déjà sur le port de l'API ou du Web empêche leur démarrage
+# (exécution du 18/11 : 127.0.0.1:8000 était occupé par une autre application, d'où le port 18000 par défaut).
+$dockerProcs = @('com.docker.backend', 'com.docker.proxy', 'wslrelay', 'vpnkit', 'dockerd', 'Docker Desktop')
+foreach ($pair in @(@('api', $apiPort), @('web', $webPort))) {
+    $svc = $pair[0]; $port = [int]$pair[1]
+    $owners = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
+    $foreign = @()
+    foreach ($procId in $owners) {
+        $name = (Get-Process -Id $procId -ErrorAction SilentlyContinue).ProcessName
+        if ($name -and ($dockerProcs -notcontains $name)) { $foreign += "$name (PID $procId)" }
+    }
+    Result "port_${svc}_${port}_libre" ($foreign.Count -eq 0) ($(if ($foreign.Count) { "occupé par $($foreign -join ', ') : fermez ce programme ou choisissez un autre port dans .env (API_PORT / WEB_PORT)" } else { "" }))
+}
+
+# Conteneurs api/web d'une tentative précédente : sans données, ils sont recréés pour repartir d'un état
+# réseau sain (une tentative interrompue par un conflit de port peut laisser un conteneur sans réseau).
+# Les volumes (pgdata, redisdata, s3data) ne sont jamais touchés.
+$r = Run "Retrait des anciens conteneurs api et web (sans données)" { docker compose rm -s -f api web }
+
 $r = Run "docker compose up --build -d (plusieurs minutes la première fois)" { docker compose up --build -d }
 Result "compose_up_build" ($r.Code -eq 0)
 
@@ -188,7 +207,7 @@ $r = Run "pytest : base, migrations, API, unitaires (bases jetables)" {
     docker run --rm --network $net -v "${root}:/repo" -w /repo `
         -e "DATABASE_URL=postgresql+asyncpg://${PGU}:${PGPW}@postgres:5432/nl_validation_api" `
         -e "REDIS_URL=redis://:$($envVars['REDIS_PASSWORD'])@redis:6379/0" `
-        -e NL_TEST_PGHOST=postgres -e NL_TEST_PGPORT=5432 -e NL_TEST_PGUSER=$PGU -e PGPASSWORD=$PGPW -e PYTHONDONTWRITEBYTECODE=1 `
+        -e DEBIAN_FRONTEND=noninteractive -e NL_TEST_PGHOST=postgres -e NL_TEST_PGPORT=5432 -e NL_TEST_PGUSER=$PGU -e PGPASSWORD=$PGPW -e PYTHONDONTWRITEBYTECODE=1 `
         python:3.12-slim sh -c "apt-get update -qq >/dev/null && apt-get install -y -qq postgresql-client >/dev/null && cd services/api && pip install -q --disable-pip-version-check --root-user-action=ignore -e '.[dev]' && alembic upgrade head && python -m app.seed && cd /repo && python -m pytest -q -rs -p no:cacheprovider database/tests services/api/tests"
 }
 Result "pytest_complet" ($r.Code -eq 0) (($r.Out -split "`n" | Select-String "passed|failed|error") -join " ")

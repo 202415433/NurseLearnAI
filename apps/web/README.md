@@ -7,7 +7,7 @@ Architecture : [`docs/FRONTEND-ARCHITECTURE.md`](../../docs/FRONTEND-ARCHITECTUR
 ```powershell
 cd apps\web
 npm install
-$env:API_INTERNAL_URL = "http://localhost:8000"   # API démarrée (docker compose up --build -d)
+$env:API_INTERNAL_URL = "http://localhost:18000"   # API démarrée (docker compose up --build -d)
 npm run dev                                        # http://localhost:3000
 npm run typecheck; npm test                        # TypeScript + Vitest
 npm run build; npx playwright install chromium; npm run test:e2e

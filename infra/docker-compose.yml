@@ -90,7 +90,7 @@ services:
       # globale en local. En production, la limite par visiteur se fera au proxy d'entrée (voir PHASE2-READINESS).
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-3000}
     ports:
-      - "127.0.0.1:${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-18000}:8000"
 
   web:                                      # Interface Next.js (Phase 1.2)
     build:

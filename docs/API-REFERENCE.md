@@ -1,6 +1,6 @@
 # Référence de l'API publique — Phase 1.2
 
-> Branche `phase-1.2` · documentation interactive : <http://localhost:8000/docs> (OpenAPI : `/openapi.json`)
+> Branche `phase-1.2` · documentation interactive : <http://localhost:18000/docs> (OpenAPI : `/openapi.json`)
 
 L'API de la Phase 1.2 est **en lecture seule** et **publique** : aucune authentification (elle arrivera en Phase 2), aucune écriture. Toute méthode autre que `GET` renvoie `405`.
 
@@ -50,11 +50,11 @@ Pour chaque leçon, la version publiée retenue est, dans l'ordre : langue deman
 ## Exemples
 
 ```powershell
-curl.exe -s "http://localhost:8000/api/v1/countries"
-curl.exe -s "http://localhost:8000/api/v1/jurisdictions?country=CA"
-curl.exe -s -H "Accept-Language: en" "http://localhost:8000/api/v1/professions?jurisdiction=CA-QC"
-curl.exe -s "http://localhost:8000/api/v1/programs?jurisdiction=CA-QC&profession=pab"   # total 0 : pilote en brouillon
-curl.exe -s "http://localhost:8000/api/v1/professions?jurisdiction=%3Cx%3E"           # 422 problem+json
+curl.exe -s "http://localhost:18000/api/v1/countries"
+curl.exe -s "http://localhost:18000/api/v1/jurisdictions?country=CA"
+curl.exe -s -H "Accept-Language: en" "http://localhost:18000/api/v1/professions?jurisdiction=CA-QC"
+curl.exe -s "http://localhost:18000/api/v1/programs?jurisdiction=CA-QC&profession=pab"   # total 0 : pilote en brouillon
+curl.exe -s "http://localhost:18000/api/v1/professions?jurisdiction=%3Cx%3E"           # 422 problem+json
 ```
 
 ## Évolution
