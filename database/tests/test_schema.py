@@ -138,8 +138,8 @@ def test_author_cannot_review_own_lesson(db, make_lesson, make_user):
         f"VALUES ('{lid}', 'fr', 1, 'Leçon', '{LV_BODY}', 'approved', '{author}', '{author}', now())").lower()
 
 
-def test_single_published_version_per_lesson_locale(db, make_lesson, make_user):
-    lid, author, reviewer = make_lesson(), make_user(), make_user()
+def test_single_published_version_per_lesson_locale(db, make_lesson, make_user, make_reviewer):
+    lid, author, reviewer = make_lesson(), make_user(), make_reviewer()
     ins = ("INSERT INTO lesson_versions (lesson_id, locale, version_no, title, body, status, author_id, reviewed_by, "
            "reviewed_at, published_at, next_review_due) VALUES ('{l}', '{loc}', {v}, 'Leçon', '" + LV_BODY.replace('{', '{{').replace('}', '}}') + "', "
            "'published', '{a}', '{r}', now(), now(), current_date + 365)")
@@ -187,8 +187,9 @@ def test_regulated_act_requires_supervision_notice(db, specialty_id):
 
 
 # --------------------------------------------------------------------------- compétences & attestations
-def test_practice_verification_requires_another_person(db, make_user):
+def test_practice_verification_requires_another_person(db, make_user, grant_role):
     student = make_user()
+    grant_role(student, "instructor")   # même habilité, on ne se valide pas soi-même
     cid = new_id()
     db.sql(f"INSERT INTO competencies (id, code, specialty_id, title_i18n, domain, risk_level) "
            f"SELECT '{cid}', 'c-{cid[:8]}', id, '{{\"fr\":\"Prise de pouls\"}}', 'skill', 'moderate' "

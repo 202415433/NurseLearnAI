@@ -65,6 +65,9 @@ def db():
     d.admin(f"DROP DATABASE IF EXISTS {d.name}")
     d.admin(f"CREATE DATABASE {d.name}")
     d.file(SCHEMA / "0001_core.sql")
+    if d.sql("SELECT count(*) FROM pg_available_extensions WHERE name = 'vector'") == "1":
+        d.file(SCHEMA / "0002_pgvector.sql")
+    d.file(SCHEMA / "0003_business_rules.sql")   # indépendante des objets de 0002
     d.file(SEEDS / "0001_reference_data.sql")
     yield d
     d.admin(f"DROP DATABASE IF EXISTS {d.name} WITH (FORCE)")
@@ -82,6 +85,34 @@ def make_user(db):
         db.sql(f"INSERT INTO users (id, email, status, email_verified_at) "
                f"VALUES ('{uid}', '{email}', 'active', now())")
         return uid
+    return _make
+
+
+@pytest.fixture
+def grant_role(db):
+    """Attribue un rôle (global si org est None) à un utilisateur."""
+    def _grant(user_id: str, role_code: str, org: str | None = None) -> None:
+        org_sql = f"'{org}'" if org else "NULL"
+        db.sql(f"INSERT INTO user_roles (user_id, role_id, organization_id) "
+               f"SELECT '{user_id}', id, {org_sql} FROM roles WHERE code = '{role_code}'")
+    return _grant
+
+
+@pytest.fixture
+def make_reviewer(make_user, grant_role):
+    def _make() -> str:
+        uid = make_user()
+        grant_role(uid, "medical_reviewer")
+        return uid
+    return _make
+
+
+@pytest.fixture
+def make_org(db):
+    def _make() -> str:
+        oid = new_id()
+        db.sql(f"INSERT INTO organizations (id, slug, name, kind) VALUES ('{oid}', 'org-{oid[:8]}', 'Institut {oid[:4]}', 'school')")
+        return oid
     return _make
 
 
