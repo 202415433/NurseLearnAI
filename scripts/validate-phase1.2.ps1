@@ -86,16 +86,17 @@ $r = Run "Configuration Compose (racine)" { docker compose config --services }
 Result "compose_six_services" ($r.Code -eq 0 -and $r.Out -match 'postgres' -and $r.Out -match 'redis' -and $r.Out -match 's3' -and $r.Out -match 'mailpit' -and $r.Out -match 'api' -and $r.Out -match 'web')
 # Ports : un autre programme Windows qui écoute déjà sur le port de l'API ou du Web empêche leur démarrage
 # (exécution du 18/11 : 127.0.0.1:8000 était occupé par une autre application, d'où le port 18000 par défaut).
-$dockerProcs = @('com.docker.backend', 'com.docker.proxy', 'wslrelay', 'vpnkit', 'dockerd', 'Docker Desktop')
 foreach ($pair in @(@('api', $apiPort), @('web', $webPort))) {
     $svc = $pair[0]; $port = [int]$pair[1]
     $owners = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
-    $foreign = @()
-    foreach ($procId in $owners) {
-        $name = (Get-Process -Id $procId -ErrorAction SilentlyContinue).ProcessName
-        if ($name -and ($dockerProcs -notcontains $name)) { $foreign += "$name (PID $procId)" }
-    }
-    Result "port_${svc}_${port}_libre" ($foreign.Count -eq 0) ($(if ($foreign.Count) { "occupé par $($foreign -join ', ') : fermez ce programme ou choisissez un autre port dans .env (API_PORT / WEB_PORT)" } else { "" }))
+    $holders = @()
+    foreach ($procId in $owners) { $holders += "$((Get-Process -Id $procId -ErrorAction SilentlyContinue).ProcessName) (PID $procId)" }
+    # Conteneurs (de n'importe quel projet) qui publient déjà ce port
+    $pub = docker ps --format "{{.Names}} {{.Ports}}" 2>$null | Where-Object { $_ -match ":$port->" }
+    $ours = $pub | Where-Object { $_ -match "^nurselearn-$svc-1 " }
+    $busy = ($holders.Count -gt 0) -and -not $ours
+    $detail = if ($busy) { "occupé par $($holders -join ', ')$(if ($pub) { ' — conteneur : ' + ($pub -join '; ') }) : libérez-le ou choisissez un autre port dans .env (API_PORT / WEB_PORT). Détails : scripts\diagnose-ports.ps1" } else { "" }
+    Result "port_${svc}_${port}_libre" (-not $busy) $detail
 }
 
 # Conteneurs api/web d'une tentative précédente : sans données, ils sont recréés pour repartir d'un état
@@ -105,6 +106,7 @@ $r = Run "Retrait des anciens conteneurs api et web (sans données)" { docker co
 
 $r = Run "docker compose up --build -d (plusieurs minutes la première fois)" { docker compose up --build -d }
 Result "compose_up_build" ($r.Code -eq 0)
+if ($r.Code -ne 0) { Run "Diagnostic des ports (lecture seule)" { powershell -ExecutionPolicy Bypass -File "$root\scripts\diagnose-ports.ps1" } | Out-Null }
 
 Log "Attente de la santé des services (max 240 s)..."
 $deadline = (Get-Date).AddSeconds(240)
