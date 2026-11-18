@@ -110,7 +110,7 @@ Résultat : 30 contrôles, **25 réussis**, 5 échecs — tous dus à une seule 
 | Alembic **réel** | <!-- ALEMBIC -->✅ upgrade, idempotence, downgrade, réapplication (après corrections A10, A13) | journal n° 4 |
 | pgvector (0002) | <!-- PGVECTOR -->✅ pgvector 0.8.7 installé par Alembic, index HNSW, test pgvector réel | journal n° 4 |
 | Docker Compose | <!-- DOCKER -->✅ 4 services sains, connexion, persistance, volumes, aucun secret | journaux n° 3 et 4 |
-| CI GitHub | ✅ commit `79ef00f` : 3 jobs réussis sur GitHub · ⏳ nouvelle CI (4 jobs, dont Alembic réel) **jamais exécutée sur GitHub** : branche `phase-1.1` non poussée | page Actions, run #1 |
+| CI GitHub | ✅ branche `phase-1.1` (commit `afe5479`) : **4/4 jobs réussis sur GitHub** — schéma + règles métier avec pgvector, Alembic réel, design system, docker-compose | run 44391779337 |
 | Design system | ✅ | 58 tests |
 
 ## 6. Anomalies détectées
@@ -158,7 +158,7 @@ Résultat : 30 contrôles, **25 réussis**, 5 échecs — tous dus à une seule 
 
 ## 9. Risques restants
 
-1. La nouvelle CI (job Alembic réel) n'a pas encore tourné sur GitHub ; la preuve actuelle vient de votre poste Windows uniquement.
+1. ~~CI GitHub non exécutée~~ — exécutée le 18/11/2026 : 4/4 réussis.
 2. Isolation par établissement à l'exécution : dépendra de l'API (filtrage systématique + tests d'accès croisé) ; la sécurité au niveau des lignes (RLS) PostgreSQL est à décider en Phase 2.
 3. Aucun relecteur médical : aucun contenu ne pourra être publié ; le pilote restera en DRAFT.
 4. Données réglementaires (12 métiers) toujours `pending_expert_review`.

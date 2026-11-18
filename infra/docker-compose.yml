@@ -1,7 +1,7 @@
 # NurseLearn AI — services d'infrastructure pour le développement local
 # (PostgreSQL+pgvector, Redis, stockage S3 RustFS, Mailpit).
 # Démarrage :  docker compose -f infra/docker-compose.yml --env-file .env up -d
-# Les services applicatifs (api, web, worker) sont ajoutés en Phase 2 sous le profil "app".
+# Application (lot 1.2) :  docker compose -f infra/docker-compose.yml --env-file .env --profile app up -d --build
 name: nurselearn
 
 services:
@@ -68,6 +68,40 @@ services:
     ports:
       - "127.0.0.1:1025:1025"
       - "127.0.0.1:8025:8025"
+
+  api:                                      # API FastAPI (lot 1.2)
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: services/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-nurselearn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nurselearn}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CORS_ORIGINS: '["http://localhost:3000"]'
+      LOG_LEVEL: INFO
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+
+  web:                                      # Interface Next.js (lot 1.2)
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_INTERNAL_URL: http://api:8000
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
 
 volumes:
   pgdata:

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "phase-*"]
+    branches: [main, "phase-*", "lot-*"]
   pull_request:
 
 permissions:
@@ -88,6 +88,100 @@ jobs:
         run: alembic upgrade head
       - run: $PSQL -d nl_alembic -f database/checks/verify_head.sql
 
+  api:
+    name: API FastAPI (tests sur PostgreSQL + Redis réels)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:ci@localhost:5432/nl_api
+      REDIS_URL: redis://localhost:6379/0
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: psql -h localhost -U postgres -c "CREATE DATABASE nl_api"
+      - name: Migrations et données de référence
+        run: alembic upgrade head && python -m app.seed && python -m app.seed
+      - name: Tests de l'API
+        run: python -m pytest -q -rs tests/api
+      - name: L'API démarre avec uvicorn et répond
+        run: |
+          uvicorn app.main:create_app --factory --port 8000 &
+          for i in $(seq 1 30); do curl -fsS localhost:8000/ready && break; sleep 1; done
+          curl -fsS localhost:8000/api/v1/jurisdictions/CA-QC/professions | grep -q '"code":"pab"'
+
+  web:
+    name: Web Next.js (build, parcours e2e, accessibilité axe)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:ci@localhost:5432/nl_web
+      API_INTERNAL_URL: http://localhost:8000
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: API de test (migrations, données, démarrage)
+        working-directory: services/api
+        run: |
+          pip install -e .
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+          psql -h localhost -U postgres -c "CREATE DATABASE nl_web"
+          alembic upgrade head && python -m app.seed
+          nohup uvicorn app.main:create_app --factory --port 8000 > /tmp/api.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS localhost:8000/ready && break; sleep 1; done
+        env:
+          PGPASSWORD: ci
+      - name: Installation et build
+        working-directory: apps/web
+        run: npm install && npm run typecheck && npm run build
+      - name: Navigateur Playwright
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+      - name: Parcours e2e + axe
+        working-directory: apps/web
+        run: npm run test:e2e
+      - name: Journal de l'API en cas d'échec
+        if: failure()
+        run: cat /tmp/api.log || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+
   design-tokens:
     name: Design system (contrastes WCAG)
     runs-on: ubuntu-24.04
@@ -109,3 +203,5 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: cp .env.example .env && docker compose -f infra/docker-compose.yml --env-file .env config -q
+      - name: Images de l'application (API, Web)
+        run: cp .env.example .env && docker compose -f infra/docker-compose.yml --env-file .env --profile app build

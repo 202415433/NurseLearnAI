@@ -1,0 +1,51 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+/* Les couleurs viennent exclusivement des jetons de design (thèmes clair/sombre). */
+@theme inline {
+  --color-bg: var(--nl-color-bg);
+  --color-surface: var(--nl-color-surface);
+  --color-surface-raised: var(--nl-color-surface-raised);
+  --color-border: var(--nl-color-border);
+  --color-border-strong: var(--nl-color-border-strong);
+  --color-fg: var(--nl-color-text);
+  --color-fg-muted: var(--nl-color-text-muted);
+  --color-primary: var(--nl-color-primary);
+  --color-primary-hover: var(--nl-color-primary-hover);
+  --color-on-primary: var(--nl-color-on-primary);
+  --color-primary-soft: var(--nl-color-primary-soft);
+  --color-accent: var(--nl-color-accent);
+  --color-accent-fill: var(--nl-color-accent-fill);
+  --color-on-accent-fill: var(--nl-color-on-accent-fill);
+  --color-accent-soft: var(--nl-color-accent-soft);
+  --color-success: var(--nl-color-success);
+  --color-warning: var(--nl-color-warning);
+  --color-warning-soft: var(--nl-color-warning-soft);
+  --color-danger: var(--nl-color-danger);
+  --color-danger-soft: var(--nl-color-danger-soft);
+  --font-sans: var(--nl-font-sans);
+  --radius-sm: var(--nl-radius-sm);
+  --radius-md: var(--nl-radius-md);
+  --radius-lg: var(--nl-radius-lg);
+}
+
+html {
+  background: var(--nl-color-bg);
+  color: var(--nl-color-text);
+  font-family: var(--nl-font-sans);
+  line-height: var(--nl-leading-normal);
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+}
+.skip-link:focus {
+  left: 1rem;
+  top: 1rem;
+  z-index: 50;
+  padding: 0.75rem 1rem;
+  border-radius: var(--nl-radius-md);
+  background: var(--nl-color-primary);
+  color: var(--nl-color-on-primary);
+}

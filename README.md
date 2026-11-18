@@ -10,7 +10,8 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 |---|---|
 | 1 — Analyse et architecture | ✅ livrée — [`docs/VALIDATION-PHASE1.md`](docs/VALIDATION-PHASE1.md) |
 | 1.1 — Validation technique | ✅ infrastructure validée 30/30 sur Windows, en attente du push et de la CI — [`docs/VALIDATION-PHASE1.1.md`](docs/VALIDATION-PHASE1.1.md), décision : [`docs/PHASE2-READINESS.md`](docs/PHASE2-READINESS.md) |
-| 2 — MVP fonctionnel | 📋 préparée — voir [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
+| 1.2 — Socle exécutable (API + web) | 🔎 développé, en validation — [`docs/VALIDATION-LOT1.2.md`](docs/VALIDATION-LOT1.2.md) |
+| 2 — MVP fonctionnel | ⏸️ non autorisée avant validation du lot 1.2 — plan : [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
 | 3 à 7 | 🗓️ planifiées — voir [`docs/06-roadmap.md`](docs/06-roadmap.md) |
 
 ## Documentation
@@ -27,8 +28,8 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 ## Structure
 
 ```
-apps/web            Next.js (Phase 2)          apps/mobile        Expo (Phase 5)
-services/api        FastAPI + Alembic          packages/design-tokens   jetons de design
+apps/web            Next.js (lot 1.2)          apps/mobile        Expo (Phase 5)
+services/api        FastAPI + Alembic (lot 1.2) packages/design-tokens  jetons de design
 database            schéma SQL, données de référence, tests de contraintes
 infra               docker-compose (PostgreSQL+pgvector, Redis, RustFS (S3), Mailpit)
 scripts             utilitaires PowerShell et Bash
@@ -51,6 +52,14 @@ Validation complète en une commande (Docker, Alembic réel, pgvector, tests, se
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase1.1.ps1
+```
+
+Application complète (lot 1.2) :
+
+```powershell
+docker compose -f infra/docker-compose.yml --env-file .env --profile app up -d --build
+# Web : http://localhost:3000   ·   API : http://localhost:8000/docs
+powershell -ExecutionPolicy Bypass -File .\scripts\validate-lot1.2.ps1   # validation complète du lot 1.2
 ```
 
 Interfaces locales : console S3 (RustFS) http://localhost:9001/rustfs/console/ · Mailpit http://localhost:8025

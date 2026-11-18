@@ -26,8 +26,8 @@ L'infrastructure est validée de bout en bout sur votre poste Windows : 4 servic
 | C1 | Services Docker démarrés et sains (PostgreSQL+pgvector, Redis, stockage S3 RustFS, Mailpit), volumes persistants, aucun secret dans les journaux | Journal `docs/validation-logs/phase1.1-*.log` sans FAIL | <!-- C1 -->✅ exécution n° 4 : 30/30 |
 | C2 | `alembic upgrade head` → 60 tables, pgvector, HNSW, 0003 ; `upgrade head` idempotent ; `downgrade base` → base vide ; réapplication OK | Même journal + job CI « Alembic réel » | <!-- C2 -->✅ exécution n° 4 (sur votre poste) · ⏳ job CI |
 | C3 | Suite pytest complète **avec** pgvector, 0 test ignoré | Même journal + job CI « Schéma » | <!-- C3 -->✅ 46 réussis, 0 ignoré, pgvector réel (exécution n° 4) |
-| C4 | Branche `phase-1.1` poussée, CI GitHub verte (4 jobs) | Page Actions | ⏳ (votre autorisation de push) |
-| C5 | Lot d'intégration 1.2 livré et vérifié (ci-dessous) | Tests + démonstration | ⏳ |
+| C4 | Branche `phase-1.1` poussée, CI GitHub verte (4 jobs) | Page Actions | ✅ run 44391779337 : 4/4 réussis |
+| C5 | Lot d'intégration 1.2 livré et vérifié (ci-dessous) | Tests + démonstration | 🔎 développé (branche `lot-1.2`), validation réelle en attente — [`VALIDATION-LOT1.2.md`](VALIDATION-LOT1.2.md) |
 | C6 | Un seul dossier de travail local (`C:\NurseLearnAI-git`) | — | ⏳ (vous) |
 
 Non bloquant pour la Phase 2, mais bloquant pour toute **publication** : au moins un relecteur médical qualifié (Québec) inscrit avec le rôle `medical_reviewer`.
