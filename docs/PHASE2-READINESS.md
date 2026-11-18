@@ -5,18 +5,18 @@
 ## Décision
 
 <!-- DECISION -->
-## **NO-GO pour la Phase 2 aujourd'hui** — en attente de la validation réelle de la Phase 1.2.
+## **NO-GO formel pour la Phase 2 aujourd'hui — Phase 1.2 validée sur Windows (52/52).** Il reste la CI GitHub sur `phase-1.2` et les fusions vers `main`, qui dépendent de votre autorisation.
 
-Mise à jour du 18 novembre 2026 (Phase 1.2 développée).
+Mise à jour du 18 novembre 2026, 17 h 57 (exécution n° 3 : 52/52).
 
 ### Ce qui est prouvé
 
-- Infrastructure Phase 1.1 : 30/30 sur votre poste Windows (deux exécutions) et CI GitHub 4/4 (`phase-1.1`).
-- Phase 1.2 : API publique en lecture seule, parcours web complet, Compose « une commande », tests écrits (API, unitaires, composants, e2e, accessibilité). Côté base : 48 tests réussis ici, le pilote reste invisible.
+- Phase 1.1 : 30/30 sur Windows (deux exécutions) et CI GitHub 4/4 (`phase-1.1`).
+- Phase 1.2 : **52/52 sur Windows** (`scripts/validate-phase1.2.ps1`, commit `102a9c6`) — pile complète par `docker compose up --build -d`, 6 services sains, API et parcours web sur données PostgreSQL, brouillons invisibles, persistance, CORS, ports locaux, pytest 92/92, Vitest 18/18, Playwright + axe 7/7, aucun secret dans les journaux.
 
 ### Ce qui manque pour dire GO
 
-1. **Exécution réelle de la Phase 1.2** : tests FastAPI, Vitest, `next build`, Playwright/axe et images Docker n'ont pas pu tourner dans l'espace de travail (aucun paquet installable). Preuve attendue : `scripts/validate-phase1.2.ps1` sans FAIL **et/ou** CI GitHub verte sur `phase-1.2` (push à autoriser).
+1. **CI GitHub verte sur `phase-1.2`** (6 jobs, dont la pile Compose et le scénario « programme publié » de démonstration, exécuté en CI seulement) : push à autoriser.
 2. **Fusion** de `phase-1.1` puis `phase-1.2` vers `main` (votre autorisation).
 3. Archivage de l'ancien dossier `C:\NurseLearnAI`.
 
@@ -28,7 +28,7 @@ Mise à jour du 18 novembre 2026 (Phase 1.2 développée).
 | C2 | `alembic upgrade head` → 60 tables, pgvector, HNSW, 0003 ; `upgrade head` idempotent ; `downgrade base` → base vide ; réapplication OK | Même journal + job CI « Alembic réel » | <!-- C2 -->✅ exécution n° 4 (sur votre poste) · ⏳ job CI |
 | C3 | Suite pytest complète **avec** pgvector, 0 test ignoré | Même journal + job CI « Schéma » | <!-- C3 -->✅ 46 réussis, 0 ignoré, pgvector réel (exécution n° 4) |
 | C4 | Branche `phase-1.1` poussée, CI GitHub verte (4 jobs) | Page Actions | ✅ run 44391779337 : 4/4 réussis |
-| C5 | Phase 1.2 livrée et vérifiée | `validate-phase1.2.ps1` sans FAIL + CI verte sur `phase-1.2` | 🔎 développée (branche `phase-1.2`, non poussée), validation réelle en attente — [`VALIDATION-PHASE1.2.md`](VALIDATION-PHASE1.2.md) |
+| C5 | Phase 1.2 livrée et vérifiée | `validate-phase1.2.ps1` sans FAIL + CI verte sur `phase-1.2` | ✅ 52/52 sur Windows · ⏳ CI (push à autoriser) — [`VALIDATION-PHASE1.2.md`](VALIDATION-PHASE1.2.md) |
 | C6 | Un seul dossier de travail local (`C:\NurseLearnAI-git`) | — | ✅ utilisé pour la Phase 1.2 · ⏳ archivage de l'ancien dossier (vous) |
 | C7 | Fusion vers `main` des branches validées | Historique Git | ⏳ (autorisation) |
 
@@ -48,7 +48,7 @@ Non bloquant pour la Phase 2, mais bloquant pour toute **publication** : au moin
 ## Séquence recommandée
 
 1. ~~Validation Phase 1.1 (30/30) et CI `phase-1.1` (4/4)~~ — fait.
-2. Vous lancez `scripts/validate-phase1.2.ps1` sur `C:\NurseLearnAI-git` (branche `phase-1.2`).
+2. ~~Validation `scripts/validate-phase1.2.ps1`~~ — fait, 52/52.
 3. Vous autorisez le push de `phase-1.2` ; je vérifie la CI GitHub (6 jobs).
 4. Vous autorisez les fusions vers `main`.
 5. Décision GO Phase 2.

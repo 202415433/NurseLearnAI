@@ -1,6 +1,6 @@
 # Rapport de validation — Phase 1.2 (API publique et parcours web)
 
-> 18 novembre 2026 · branche `phase-1.2` (locale, **non poussée**) · statut : **développée — validation réelle en attente**
+> 18 novembre 2026 · branche `phase-1.2` (locale, **non poussée**) · statut : **validée sur Windows — 52/52 (exécution n° 3)** · CI GitHub en attente du push
 
 ## 1. Point de départ : Phase 1.1 validée
 
@@ -73,3 +73,57 @@ Tests FastAPI, Vitest, `next build`, Playwright/axe, construction des images Doc
 | 127.0.0.1:8000 tenu par `com.docker.backend` ; répond `server: uvicorn` avec un format d'erreur `{"error":{"code":"HTTP_404"…}}` qui n'est pas celui de NurseLearn | Conteneur Docker d'**un autre projet** | Laissé intact ; NurseLearn utilise 18000 |
 | 127.0.0.1:18000 et ::1:18000 tenus par `wslrelay`, :: par `com.docker.backend` | D'abord pris pour une écoute résiduelle ; la capture de Docker Desktop montre en réalité le conteneur `euroshadow-api-1` d'un **autre projet**, qui publie `18000:8000` (le gabarit `docker ps` du diagnostic était défectueux et ne l'avait pas affiché) | Port par défaut de NurseLearn : **28000** ; le contrôle préalable nomme désormais le conteneur qui occupe un port |
 | Plages réservées par Windows : 5357, 50000–50059, 55088–55187, 62515–63114 | 3000, 28000 et 55432 hors plages | — |
+
+### Exécution n° 3 (18/11/2026, 17 h 48, commit `102a9c6`) — **52/52, 0 échec**
+
+Journal : `docs/validation-logs/phase1.2-20261118-174807.log`.
+
+| Domaine | Résultat |
+|---|---|
+| Pile complète par `docker compose up --build -d` | ✅ 6 services sains (PostgreSQL, Redis, RustFS, Mailpit, API, Web) |
+| API | ✅ `/health`, `/ready` (base + Redis), OpenAPI, pays CA/FR/SN, 5 juridictions canadiennes, métiers QC/ON/FR/SN sans équivalence, 27 spécialités, anglais |
+| Données | ✅ issues de PostgreSQL (9 juridictions API = 9 en base), persistance après redémarrage (12 métiers avant et après), migrations à `0003_business_rules` |
+| Brouillons et sécurité | ✅ pilote invisible (liste 0, détail 404, web « Aucun programme disponible »), 422 problem+json, pagination bornée, 405 en écriture, en-têtes de sécurité, aucun secret dans les réponses ni les journaux, CORS |
+| Réseau | ✅ appel interne web → api, ports 3000 / 28000 / 55432 limités à 127.0.0.1 |
+| Interface | ✅ accueil, pays, juridictions, métiers (« non encore validé »), spécialités, programmes, détail introuvable pour un brouillon, anglais, juridiction inconnue |
+| Tests automatisés | ✅ pytest **92/92** · Vitest **18/18** · TypeScript · Playwright + axe **7/7** (le 8ᵉ scénario, détail d'un programme publié, s'exécute en CI uniquement) |
+
+## 4. Critères d'acceptation
+
+| # | Critère | Preuve | État |
+|---|---|---|---|
+| 1 | `docker compose up --build -d` démarre l'application | script `compose_up_build`, `sante_*` · CI `compose` | ✅ exécution n° 3 |
+| 2 | FastAPI répond | `api_health`, `api_ready_pg_redis` | ✅ exécution n° 3 |
+| 3 | Next.js accessible | `web_accueil` | ✅ exécution n° 3 |
+| 4 | Données issues de PostgreSQL | `donnees_issues_de_postgresql` (compte API = compte SQL) | ✅ exécution n° 3 |
+| 5–9 | Pays, juridiction, métier, spécialités, programmes publics | `web_*`, e2e parcours | ✅ exécution n° 3 |
+| 10 | Brouillons invisibles | `api_brouillon_invisible_*`, `web_*_brouillon_*`, tests API et base (✅ côté base) | ✅ exécution n° 3 |
+| 11 | Données d'établissement isolées | `test_organization_content_is_isolated` | ✅ exécution n° 3 |
+| 12 | Migrations compatibles | `migrations_a_jour`, aucune migration modifiée, tests de migrations (✅ ici) | ✅ exécution n° 3 |
+| 13 | Tests réussis | `pytest_complet`, `web_tests_vitest_playwright_axe`, CI | ✅ exécution n° 3 |
+| 14 | Commandes Windows documentées | README §« Démarrer », ce document | ✅ |
+
+## 5. Commandes Windows
+
+```powershell
+cd C:\NurseLearnAI-git
+git switch phase-1.2
+docker compose up --build -d                      # toute la pile
+powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase1.2.ps1
+start http://localhost:3000/fr                    # interface
+start http://localhost:28000/docs                  # API (OpenAPI)
+docker compose ps                                 # état et santé
+docker compose logs -f api web                    # journaux
+docker compose stop                               # arrêt SANS perte de données
+```
+
+Ne pas utiliser `docker compose down -v` (supprimerait les volumes de données).
+
+## 6. Écarts assumés et points ouverts
+
+- **Limite de débit** : le serveur Web appelle l'API pour tous les visiteurs ; en local la limite est donc globale (3 000/min par défaut). La limite par visiteur se fera au proxy d'entrée avec en-têtes `X-Forwarded-For` de confiance (Phase 2, lot déploiement).
+- **Statut HTTP des pages introuvables** : avec l'état de chargement, Next.js peut répondre 200 + `noindex` au lieu de 404 ; l'écran affiché est correct.
+- **Modèles SQLAlchemy** limités aux 10 tables lues ; modélisation complète et `alembic check` en Phase 2.
+- **`package-lock.json`** sera créé au premier `npm install` et devra être versionné.
+- **CSP stricte** et **linters** (Ruff, ESLint) : à brancher en Phase 2.
+- **Contenu médical** : le pilote PAB Québec reste en brouillon tant qu'aucun relecteur qualifié n'est inscrit.
