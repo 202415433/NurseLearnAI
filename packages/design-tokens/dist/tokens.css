@@ -1,0 +1,123 @@
+/* Généré par src/build.mjs — ne pas modifier à la main. v0.1.0 */
+:root {
+  --nl-font-sans: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, "Noto Sans", sans-serif;
+  --nl-font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
+  --nl-text-xs: 0.75rem;
+  --nl-text-sm: 0.875rem;
+  --nl-text-base: 1rem;
+  --nl-text-lg: 1.125rem;
+  --nl-text-xl: 1.25rem;
+  --nl-text-2xl: 1.5rem;
+  --nl-text-3xl: 1.875rem;
+  --nl-text-4xl: 2.25rem;
+  --nl-leading-tight: 1.25;
+  --nl-leading-normal: 1.5;
+  --nl-leading-relaxed: 1.7;
+  --nl-weight-regular: 400;
+  --nl-weight-medium: 500;
+  --nl-weight-semibold: 600;
+  --nl-weight-bold: 700;
+  --nl-space-0: 0;
+  --nl-space-1: 0.25rem;
+  --nl-space-2: 0.5rem;
+  --nl-space-3: 0.75rem;
+  --nl-space-4: 1rem;
+  --nl-space-5: 1.25rem;
+  --nl-space-6: 1.5rem;
+  --nl-space-8: 2rem;
+  --nl-space-10: 2.5rem;
+  --nl-space-12: 3rem;
+  --nl-space-16: 4rem;
+  --nl-radius-sm: 6px;
+  --nl-radius-md: 10px;
+  --nl-radius-lg: 16px;
+  --nl-radius-pill: 999px;
+  --nl-shadow-sm: 0 1px 2px rgba(15, 30, 51, 0.08);
+  --nl-shadow-md: 0 4px 12px rgba(15, 30, 51, 0.10);
+  --nl-shadow-lg: 0 12px 32px rgba(15, 30, 51, 0.14);
+  --nl-motion-duration-fast: 120ms;
+  --nl-motion-duration-base: 200ms;
+  --nl-motion-duration-slow: 320ms;
+  --nl-motion-easing: cubic-bezier(0.2, 0, 0, 1);
+  --nl-size-touch-target-min: 44px;
+  --nl-size-content-max: 72ch;
+  --nl-size-sidebar: 280px;
+  --nl-color-bg: #FFFFFF;
+  --nl-color-surface: #F4F7FB;
+  --nl-color-surface-raised: #FFFFFF;
+  --nl-color-border: #D5DEE9;
+  --nl-color-border-strong: #7A8BA3;
+  --nl-color-text: #0F1E33;
+  --nl-color-text-muted: #4A5A70;
+  --nl-color-primary: #0B5CAD;
+  --nl-color-primary-hover: #094C8F;
+  --nl-color-on-primary: #FFFFFF;
+  --nl-color-primary-soft: #E3EFFB;
+  --nl-color-accent: #0F766E;
+  --nl-color-accent-fill: #2CC5B5;
+  --nl-color-on-accent-fill: #04201F;
+  --nl-color-accent-soft: #DDF6F3;
+  --nl-color-success: #1A7F37;
+  --nl-color-warning: #8A5A00;
+  --nl-color-warning-soft: #FFF4D6;
+  --nl-color-danger: #B42318;
+  --nl-color-danger-soft: #FDE8E6;
+  --nl-color-focus: #0B5CAD;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --nl-color-bg: #0B1422;
+    --nl-color-surface: #111D2E;
+    --nl-color-surface-raised: #17263B;
+    --nl-color-border: #2A3B53;
+    --nl-color-border-strong: #6F82A0;
+    --nl-color-text: #E8EEF6;
+    --nl-color-text-muted: #A9B6C8;
+    --nl-color-primary: #6CB2F2;
+    --nl-color-primary-hover: #8CC4F6;
+    --nl-color-on-primary: #04182E;
+    --nl-color-primary-soft: #13304F;
+    --nl-color-accent: #3DD9C5;
+    --nl-color-accent-fill: #2CC5B5;
+    --nl-color-on-accent-fill: #04201F;
+    --nl-color-accent-soft: #0F3532;
+    --nl-color-success: #5BD68A;
+    --nl-color-warning: #F2C14E;
+    --nl-color-warning-soft: #3A2E0F;
+    --nl-color-danger: #FF8A80;
+    --nl-color-danger-soft: #3D1714;
+    --nl-color-focus: #8CC4F6;
+    color-scheme: dark;
+  }
+}
+[data-theme="dark"] {
+  --nl-color-bg: #0B1422;
+  --nl-color-surface: #111D2E;
+  --nl-color-surface-raised: #17263B;
+  --nl-color-border: #2A3B53;
+  --nl-color-border-strong: #6F82A0;
+  --nl-color-text: #E8EEF6;
+  --nl-color-text-muted: #A9B6C8;
+  --nl-color-primary: #6CB2F2;
+  --nl-color-primary-hover: #8CC4F6;
+  --nl-color-on-primary: #04182E;
+  --nl-color-primary-soft: #13304F;
+  --nl-color-accent: #3DD9C5;
+  --nl-color-accent-fill: #2CC5B5;
+  --nl-color-on-accent-fill: #04201F;
+  --nl-color-accent-soft: #0F3532;
+  --nl-color-success: #5BD68A;
+  --nl-color-warning: #F2C14E;
+  --nl-color-warning-soft: #3A2E0F;
+  --nl-color-danger: #FF8A80;
+  --nl-color-danger-soft: #3D1714;
+  --nl-color-focus: #8CC4F6;
+  color-scheme: dark;
+}
+/* Animations discrètes, désactivées si l'utilisateur le demande (WCAG 2.3.3). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+/* Focus toujours visible (WCAG 2.4.7 / 2.4.13). */
+:focus-visible { outline: 3px solid var(--nl-color-focus); outline-offset: 2px; }

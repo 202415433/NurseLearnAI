@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  database:
+    name: Schéma PostgreSQL + migrations
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      NL_TEST_PGHOST: localhost
+      NL_TEST_PGPORT: "5432"
+      NL_TEST_PGUSER: postgres
+      PGPASSWORD: ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest==8.*
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Tests de contraintes du schéma
+        run: python -m pytest -q database/tests
+      - name: Chaîne de migrations (0001 + 0002 pgvector)
+        run: python -m pytest -q services/api/tests/test_migrations.py
+
+  design-tokens:
+    name: Design system (contrastes WCAG)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm test
+        working-directory: packages/design-tokens
+      - name: Les fichiers générés sont à jour
+        run: git diff --exit-code packages/design-tokens/dist
+
+  compose:
+    name: Validation docker-compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env && docker compose -f infra/docker-compose.yml --env-file .env config -q

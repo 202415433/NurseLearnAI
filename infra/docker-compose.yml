@@ -1,0 +1,64 @@
+# NurseLearn AI — services d'infrastructure pour le développement local.
+# Démarrage :  docker compose -f infra/docker-compose.yml --env-file .env up -d
+# Les services applicatifs (api, web, worker) sont ajoutés en Phase 2 sous le profil "app".
+name: nurselearn
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16          # PostgreSQL 16 + extension pgvector
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nurselearn}
+      POSTGRES_USER: ${POSTGRES_USER:-nurselearn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD doit être défini dans .env}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"   # exposé uniquement en local
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../database:/database:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nurselearn} -d ${POSTGRES_DB:-nurselearn}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD doit être défini}"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  minio:                                    # stockage compatible S3 (médias)
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-nurselearn}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?S3_SECRET_KEY doit être défini}
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - miniodata:/data
+
+  mailpit:                                  # capture des e-mails en développement (vérification de compte)
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:

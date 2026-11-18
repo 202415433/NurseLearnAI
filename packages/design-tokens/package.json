@@ -1,0 +1,17 @@
+{
+  "name": "@nurselearn/design-tokens",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Jetons de design NurseLearn AI (web et mobile)",
+  "files": ["dist"],
+  "exports": {
+    "./tokens.css": "./dist/tokens.css",
+    "./tailwind-preset": "./dist/tailwind-preset.cjs",
+    "./native": "./dist/tokens.native.json"
+  },
+  "scripts": {
+    "build": "node src/build.mjs",
+    "test": "node src/build.mjs && node --test \"test/*.test.mjs\""
+  }
+}
