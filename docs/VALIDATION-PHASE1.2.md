@@ -66,42 +66,10 @@ Tests FastAPI, Vitest, `next build`, Playwright/axe, construction des images Doc
 | ❌ Web et Playwright (`web:3000` introuvable) | Conséquence : le Web attend une API saine | Résolu par les deux points ci-dessus |
 | ℹ️ `professions` absente de la base principale | La base principale n'avait jamais été migrée (la Phase 1.1 utilisait des bases jetables) ; l'API la migre au démarrage | — |
 
-## 4. Critères d'acceptation
+### Exécution n° 2 (16 h 58) — 15/52, et diagnostic des ports (17 h 41)
 
-| # | Critère | Preuve | État |
-|---|---|---|---|
-| 1 | `docker compose up --build -d` démarre l'application | script `compose_up_build`, `sante_*` · CI `compose` | ⏳ |
-| 2 | FastAPI répond | `api_health`, `api_ready_pg_redis` | ⏳ |
-| 3 | Next.js accessible | `web_accueil` | ⏳ |
-| 4 | Données issues de PostgreSQL | `donnees_issues_de_postgresql` (compte API = compte SQL) | ⏳ |
-| 5–9 | Pays, juridiction, métier, spécialités, programmes publics | `web_*`, e2e parcours | ⏳ |
-| 10 | Brouillons invisibles | `api_brouillon_invisible_*`, `web_*_brouillon_*`, tests API et base (✅ côté base) | ⏳ |
-| 11 | Données d'établissement isolées | `test_organization_content_is_isolated` | ⏳ |
-| 12 | Migrations compatibles | `migrations_a_jour`, aucune migration modifiée, tests de migrations (✅ ici) | ⏳ |
-| 13 | Tests réussis | `pytest_complet`, `web_tests_vitest_playwright_axe`, CI | ⏳ |
-| 14 | Commandes Windows documentées | README §« Démarrer », ce document | ✅ |
-
-## 5. Commandes Windows
-
-```powershell
-cd C:\NurseLearnAI-git
-git switch phase-1.2
-docker compose up --build -d                      # toute la pile
-powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase1.2.ps1
-start http://localhost:3000/fr                    # interface
-start http://localhost:18000/docs                  # API (OpenAPI)
-docker compose ps                                 # état et santé
-docker compose logs -f api web                    # journaux
-docker compose stop                               # arrêt SANS perte de données
-```
-
-Ne pas utiliser `docker compose down -v` (supprimerait les volumes de données).
-
-## 6. Écarts assumés et points ouverts
-
-- **Limite de débit** : le serveur Web appelle l'API pour tous les visiteurs ; en local la limite est donc globale (3 000/min par défaut). La limite par visiteur se fera au proxy d'entrée avec en-têtes `X-Forwarded-For` de confiance (Phase 2, lot déploiement).
-- **Statut HTTP des pages introuvables** : avec l'état de chargement, Next.js peut répondre 200 + `noindex` au lieu de 404 ; l'écran affiché est correct.
-- **Modèles SQLAlchemy** limités aux 10 tables lues ; modélisation complète et `alembic check` en Phase 2.
-- **`package-lock.json`** sera créé au premier `npm install` et devra être versionné.
-- **CSP stricte** et **linters** (Ruff, ESLint) : à brancher en Phase 2.
-- **Contenu médical** : le pilote PAB Québec reste en brouillon tant qu'aucun relecteur qualifié n'est inscrit.
+| Constat (`scripts/diagnose-ports.ps1`) | Interprétation | Suite |
+|---|---|---|
+| 127.0.0.1:8000 tenu par `com.docker.backend` ; répond `server: uvicorn` avec un format d'erreur `{"error":{"code":"HTTP_404"…}}` qui n'est pas celui de NurseLearn | Conteneur Docker d'**un autre projet** | Laissé intact ; NurseLearn utilise 18000 |
+| 127.0.0.1:18000 et ::1:18000 tenus par `wslrelay`, :: par `com.docker.backend`, alors qu'**aucun conteneur ne tourne** (api et web à l'état « Created ») | **Écoute résiduelle** de Docker Desktop / WSL laissée par la tentative précédente : le relais WSL occupe le port avant que Docker ne le publie | Redémarrer Docker Desktop, puis relancer ; le contrôle préalable signale désormais ce cas |
+| Plages réservées par Windows : 5357, 50000–50059, 55088–55187, 62515–63114 | 3000, 18000 et 55432 hors plages | — |

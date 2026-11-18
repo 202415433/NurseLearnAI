@@ -18,7 +18,7 @@ foreach ($port in $ports) {
 }
 
 Write-Host ""; Write-Host "=== 2. Conteneurs Docker (tous projets) et ports publiés ==="
-docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}\t{{.Label ""com.docker.compose.project.working_dir""}}"
+docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 Write-Host ""; Write-Host "=== 3. Ce qui répond sur chaque port (en-têtes seulement) ==="
 foreach ($port in 8000, 18000, 3000) {

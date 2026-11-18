@@ -95,7 +95,10 @@ foreach ($pair in @(@('api', $apiPort), @('web', $webPort))) {
     $pub = docker ps --format "{{.Names}} {{.Ports}}" 2>$null | Where-Object { $_ -match ":$port->" }
     $ours = $pub | Where-Object { $_ -match "^nurselearn-$svc-1 " }
     $busy = ($holders.Count -gt 0) -and -not $ours
-    $detail = if ($busy) { "occupé par $($holders -join ', ')$(if ($pub) { ' — conteneur : ' + ($pub -join '; ') }) : libérez-le ou choisissez un autre port dans .env (API_PORT / WEB_PORT). Détails : scripts\diagnose-ports.ps1" } else { "" }
+    $hint = if ($pub) { "conteneur : $($pub -join '; ') — arrêtez-le ou choisissez un autre port dans .env (API_PORT / WEB_PORT)" }
+            elseif ($holders -match 'wslrelay|com.docker') { "aucun conteneur ne le publie : écoute résiduelle de Docker Desktop / WSL — redémarrez Docker Desktop (Restart) puis relancez" }
+            else { "fermez ce programme ou choisissez un autre port dans .env (API_PORT / WEB_PORT)" }
+    $detail = if ($busy) { "occupé par $($holders -join ', ') ; $hint. Détails : scripts\diagnose-ports.ps1" } else { "" }
     Result "port_${svc}_${port}_libre" (-not $busy) $detail
 }
 
