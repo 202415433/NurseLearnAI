@@ -188,7 +188,8 @@ function Alembic([string]$args_) {
 function Verify([string]$file) { docker @compose exec -T postgres psql -v ON_ERROR_STOP=1 -U $PGU -d nl_validation_alembic -f "/database/checks/$file" }
 
 $r = Run "Alembic : upgrade head" { Alembic "upgrade head && alembic current" }
-Result "alembic_upgrade_head" ($r.Code -eq 0 -and $r.Out -match "0003_business_rules")
+$upOk = ($r.Code -eq 0 -and $r.Out -match "0003_business_rules")
+Result "alembic_upgrade_head" $upOk
 $r = Run "Vérification de la tête (60 tables, FK, pgvector, HNSW, 0003)" { Verify "verify_head.sql" }
 Result "alembic_head_verifie" ($r.Code -eq 0) (($r.Out -split "`n" | Select-String "OK :") -join "")
 $r = Run "Alembic : upgrade head (idempotence)" { Alembic "upgrade head && alembic current" }
@@ -200,8 +201,9 @@ $r = Run "Données de référence appliquées deux fois" {
 }
 Result "seeds_idempotents" ($r.Code -eq 0 -and $r.Out.Trim().EndsWith("12"))
 $r = Run "Alembic : downgrade base" { Alembic "downgrade base" }
-Result "alembic_downgrade_base" ($r.Code -eq 0)
-$downOk = ($r.Code -eq 0)
+# Un retour arrière n'a de valeur que si la montée a réellement eu lieu.
+$downOk = ($upOk -and $r.Code -eq 0)
+Result "alembic_downgrade_base" $downOk
 $r = Run "Vérification base vide" { Verify "verify_base.sql" }
 # Une base vide ne prouve rien si le retour arrière lui-même a échoué.
 Result "alembic_base_vide" ($downOk -and $r.Code -eq 0)

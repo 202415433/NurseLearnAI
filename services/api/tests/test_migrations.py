@@ -4,7 +4,7 @@ ATTENTION : ce test valide le SQL émis par chaque révision, pas l'outil Alembi
 lui-même. L'exécution réelle (`alembic upgrade head` / `downgrade base`) est faite
 par `scripts/validate-phase1.1.ps1` et par la CI (job « Alembic réel »).
 
-Un faux module `alembic.op` (get_bind().exec_driver_sql) capture le SQL émis par chaque révision ; ce SQL est
+Un faux module `alembic.op` (curseur du pilote, sans paramètres) capture le SQL émis par chaque révision ; ce SQL est
 ensuite exécuté sur PostgreSQL (upgrade -> downgrade -> upgrade). La révision
 0002 (pgvector) n'est exécutée que si l'extension `vector` est disponible.
 """
@@ -28,8 +28,20 @@ PSQL = ["psql", "-h", os.environ.get("NL_TEST_PGHOST", "localhost"),
 def _load_revisions():
     captured: list[str] = []
     fake_alembic = types.ModuleType("alembic")
-    connection = types.SimpleNamespace(exec_driver_sql=captured.append)
-    fake_alembic.op = types.SimpleNamespace(get_bind=lambda: connection)
+    class _Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, sql, params=None):
+            assert params is None, "le script doit être envoyé SANS paramètres (sinon les % sont interprétés)"
+            captured.append(sql)
+
+    dbapi = types.SimpleNamespace(cursor=_Cursor)
+    bind = types.SimpleNamespace(connection=types.SimpleNamespace(dbapi_connection=dbapi))
+    fake_alembic.op = types.SimpleNamespace(get_bind=lambda: bind)
     sys.modules["alembic"] = fake_alembic
     sys.path.insert(0, str(VERSIONS.parent))
     revs = {}

@@ -65,9 +65,26 @@ Résultat : 30 contrôles, 19 réussis, 11 échecs. Deux nouvelles anomalies blo
 | Secrets dans les journaux | ✅ 0 fuite sur 39 Ko de journaux réels |
 | « Base vide après retour arrière » | ⚠️ affiché réussi mais **sans valeur** (aucune migration n'avait été appliquée) — corrigé : dépend désormais du succès du `downgrade` |
 
-### Exécution n° 3 — après corrections A10/A11
+### Exécution n° 3 — 18 novembre 2026, 14 h 58 (port 55432 ; journal `phase1.1-20261118-145807.log`)
 
-**Non encore exécutée.** Alembic réel, connexion PostgreSQL et persistance des volumes restent **non vérifiés**. Prérequis : `POSTGRES_PORT=55432` dans votre `.env` (voir §10).
+Résultat : 30 contrôles, **25 réussis**, 5 échecs — tous dus à une seule cause (A13).
+
+| Contrôle | Résultat |
+|---|---|
+| 4 services démarrés et **healthy** (PostgreSQL 16.16, Redis, RustFS, Mailpit) | ✅ |
+| Connexion PostgreSQL ; **pgvector 0.8.7** disponible | ✅ |
+| **Persistance** : écriture → redémarrage du conteneur → relecture de la même valeur | ✅ |
+| Volumes nommés `pgdata`, `redisdata`, `s3data` | ✅ |
+| pytest sur PostgreSQL + pgvector réels | ✅ **46 réussis, 0 ignoré** |
+| Design system (accents désormais lisibles dans le journal) | ✅ 58/58 |
+| Secrets dans les journaux (38 Ko) | ✅ 0 fuite |
+| **Alembic réel** `upgrade head` : `incomplete placeholder: '%'` | ❌ **A13** |
+| Idempotence, données de référence ×2, réapplication | ❌ conséquences de A13 |
+| `downgrade base` / base vide | ⚠️ affichés réussis mais sans valeur (rien n'avait été appliqué) — le script exige désormais une montée réussie |
+
+### Exécution n° 4 — après correction A13
+
+**Non encore exécutée.** Alembic réel reste **non vérifié**.
 
 ## 5. État par composant
 
@@ -75,9 +92,9 @@ Résultat : 30 contrôles, 19 réussis, 11 échecs. Deux nouvelles anomalies blo
 |---|---|---|
 | Schéma (60 tables, contraintes, FK, index) | ✅ vérifié sur PostgreSQL 16 | 44 tests |
 | Migration 0003 (règles métier) | ✅ vérifiée (SQL) | 12 nouveaux tests |
-| Alembic **réel** | <!-- ALEMBIC -->❌ exécution n° 2 (A10), corrigé · ⏳ à revérifier | journal n° 2 |
-| pgvector (0002) | <!-- PGVECTOR -->✅ extension et test pgvector exécutés réellement (pytest, exécution n° 2) · ⏳ via Alembic | journal n° 2 |
-| Docker Compose | <!-- DOCKER -->✅ Redis, S3, Mailpit sains · ❌ PostgreSQL (port, A11), corrigé · ⏳ à revérifier | journaux n° 1 et 2 |
+| Alembic **réel** | <!-- ALEMBIC -->❌ exécutions n° 2 (A10) et n° 3 (A13), corrigés · ⏳ à revérifier | journaux n° 2 et 3 |
+| pgvector (0002) | <!-- PGVECTOR -->✅ pgvector 0.8.7, test pgvector réel (exécutions n° 2 et 3) · ⏳ via Alembic | journal n° 3 |
+| Docker Compose | <!-- DOCKER -->✅ 4 services sains, connexion, persistance, volumes, aucun secret | journal n° 3 |
 | CI GitHub | ✅ commit `79ef00f` : 3 jobs réussis sur GitHub · ⏳ nouvelle CI (4 jobs, dont Alembic réel) validée localement uniquement | page Actions, run #1 |
 | Design system | ✅ | 58 tests |
 
@@ -96,12 +113,13 @@ Résultat : 30 contrôles, 19 réussis, 11 échecs. Deux nouvelles anomalies blo
 | A10 | **Alembic réel échouait** : le module utilitaire `_sql.py` était dans `alembic/versions/`, où Alembic exige que chaque fichier soit une révision. Le substitut, qui ne chargeait que `0*.py`, ne pouvait pas le voir. | Bloquante | Corrigée : module déplacé (`alembic/nl_sql.py`) + test de non-régression sur le contenu de `versions/` |
 | A11 | **Port 5432 refusé par Windows** sur votre poste (plage réservée ou PostgreSQL local). | Bloquante sur votre poste | Corrigée : port par défaut 55432 (`.env.example`, compose) ; le script détecte l'erreur et indique la correction. **Votre `.env` existant doit être ajusté** (le script ne modifie jamais un `.env` existant) |
 | A12 | Contrôle « base vide » réussi sans qu'aucune migration n'ait tourné. | Faible (faux positif) | Corrigée |
+| A13 | **Alembic réel : `%` interprétés par psycopg** malgré `exec_driver_sql` : SQLAlchemy transmet un jeu de paramètres vide, psycopg analyse alors les `%` de `format()` et `RAISE`. Ma correction de A1 était donc insuffisante. | Bloquante | Corrigée : le script SQL est envoyé directement au curseur du pilote **sans paramètres** (cas documenté par psycopg pour les requêtes multi-instructions) ; le substitut de test refuse désormais tout appel avec paramètres |
 | A8 | Isolation par établissement **à l'exécution** (un utilisateur ne lit que les données de son établissement) : impossible à vérifier, aucune API n'existe. | Élevée pour la Phase 2 | Ouverte — exigence du lot d'intégration |
 
 ## 7. Corrections apportées
 
 - `database/schema/0003_business_rules.sql` (+ retour arrière) et révision Alembic `0003_business_rules` — **additives**, aucune table ni colonne modifiée, compatibilité du schéma préservée.
-- Révisions Alembic 0001–0003 : exécution par `exec_driver_sql` ; module utilitaire sorti de `versions/` (A10).
+- Révisions Alembic 0001–0003 : script SQL envoyé au curseur du pilote sans paramètres (A1, A13) ; module utilitaire sorti de `versions/` (A10).
 - Port PostgreSQL par défaut 55432 (A11) ; contrôle « base vide » conditionné au retour arrière (A12).
 - `database/checks/verify_head.sql` et `verify_base.sql` : contrôles réutilisés par la CI et par le script Windows.
 - `database/tests/test_business_rules.py` : 12 nouveaux tests (RBAC, habilitations, validation pratique, isolation) ; tests existants adaptés (le relecteur doit désormais être habilité).

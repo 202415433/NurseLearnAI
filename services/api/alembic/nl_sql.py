@@ -20,13 +20,17 @@ def read_sql(name: str) -> str:
 
 
 def run_sql(name: str) -> None:
-    """Exécute un fichier SQL multi-instructions.
+    """Exécute un fichier SQL multi-instructions sur la connexion de la migration.
 
-    `op.execute(texte)` passerait par `sqlalchemy.text()` puis par le protocole
-    étendu de psycopg 3 : les `%` (format(), RAISE) seraient réinterprétés et
-    plusieurs instructions dans une même requête seraient refusées.
-    `exec_driver_sql` sans paramètres envoie le script tel quel (protocole simple).
+    Le script est envoyé directement au pilote (psycopg 3), SANS paramètres :
+    - pas d'interprétation des `%` (présents dans format() et RAISE) ;
+    - plusieurs instructions acceptées dans un même appel.
+    `op.execute()` et même `exec_driver_sql()` passent un jeu de paramètres vide
+    au pilote, qui interprète alors les `%` (anomalies A1 puis A13, Phase 1.1).
+    La transaction reste celle d'Alembic (même connexion).
     """
     from alembic import op
 
-    op.get_bind().exec_driver_sql(read_sql(name))
+    dbapi_conn = op.get_bind().connection.dbapi_connection
+    with dbapi_conn.cursor() as cur:
+        cur.execute(read_sql(name))
