@@ -14,8 +14,8 @@ from pathlib import Path
 from alembic import context
 from sqlalchemy import create_engine, pool
 
-# Les révisions importent le module utilitaire _sql.py situé dans versions/.
-sys.path.insert(0, str(Path(__file__).resolve().parent / "versions"))
+# Les révisions importent nl_sql.py, situé à côté de ce fichier (pas dans versions/).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 config = context.config
 target_metadata = None

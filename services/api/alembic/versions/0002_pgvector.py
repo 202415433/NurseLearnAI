@@ -4,9 +4,12 @@ Revision ID: 0002_pgvector
 Revises: 0001_initial_schema
 Create Date: 2026-11-18
 """
-from alembic import op
+import sys
+from pathlib import Path
 
-from _sql import read_sql
+# nl_sql.py est dans alembic/ (hors de versions/, qu'Alembic réserve aux révisions).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from nl_sql import run_sql  # noqa: E402
 
 revision = "0002_pgvector"
 down_revision = "0001_initial_schema"
@@ -15,8 +18,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(read_sql("0002_pgvector.sql"))
+    run_sql("0002_pgvector.sql")
 
 
 def downgrade() -> None:
-    op.execute(read_sql("0002_pgvector_down.sql"))
+    run_sql("0002_pgvector_down.sql")

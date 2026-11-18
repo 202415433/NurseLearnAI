@@ -1,4 +1,5 @@
-# NurseLearn AI — services d'infrastructure pour le développement local.
+# NurseLearn AI — services d'infrastructure pour le développement local
+# (PostgreSQL+pgvector, Redis, stockage S3 RustFS, Mailpit).
 # Démarrage :  docker compose -f infra/docker-compose.yml --env-file .env up -d
 # Les services applicatifs (api, web, worker) sont ajoutés en Phase 2 sous le profil "app".
 name: nurselearn
@@ -12,7 +13,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-nurselearn}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD doit être défini dans .env}
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"   # exposé uniquement en local
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"   # exposé uniquement en local
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ../database:/database:ro
@@ -38,18 +39,28 @@ services:
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
 
-  minio:                                    # stockage compatible S3 (médias)
-    image: minio/minio:latest
+  s3:                                       # stockage compatible S3 (médias) — RustFS, Apache 2.0
+    # MinIO a retiré ses images de Docker Hub (« pull access denied », constaté en Phase 1.1).
+    image: rustfs/rustfs:1.0.0
     restart: unless-stopped
-    command: ["server", "/data", "--console-address", ":9001"]
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-nurselearn}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?S3_SECRET_KEY doit être défini}
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:-nurselearn}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY doit être défini}
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
     ports:
-      - "127.0.0.1:9000:9000"
-      - "127.0.0.1:9001:9001"
+      - "127.0.0.1:9000:9000"   # API S3
+      - "127.0.0.1:9001:9001"   # console : http://localhost:9001/rustfs/console/
     volumes:
-      - miniodata:/data
+      - s3data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   mailpit:                                  # capture des e-mails en développement (vérification de compte)
     image: axllent/mailpit:latest
@@ -61,4 +72,4 @@ services:
 volumes:
   pgdata:
   redisdata:
-  miniodata:
+  s3data:

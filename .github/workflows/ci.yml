@@ -2,16 +2,24 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "phase-*"]
   pull_request:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PGPASSWORD: ci
+
 jobs:
   database:
-    name: Schéma PostgreSQL + migrations
-    runs-on: ubuntu-latest
+    name: Schéma PostgreSQL + règles métier
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -24,25 +32,69 @@ jobs:
       NL_TEST_PGHOST: localhost
       NL_TEST_PGPORT: "5432"
       NL_TEST_PGUSER: postgres
-      PGPASSWORD: ci
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: pip install pytest==8.*
+      - run: pip install "pytest>=8,<10"
       - run: sudo apt-get update && sudo apt-get install -y postgresql-client
-      - name: Tests de contraintes du schéma
-        run: python -m pytest -q database/tests
-      - name: Chaîne de migrations (0001 + 0002 pgvector)
-        run: python -m pytest -q services/api/tests/test_migrations.py
+      - name: Tests du schéma et des règles métier (avec pgvector)
+        run: python -m pytest -q -rs database/tests
+      - name: Chaîne de révisions (substitut, pgvector inclus)
+        run: python -m pytest -q -rs services/api/tests/test_migrations.py
+
+  alembic:
+    name: Alembic réel (upgrade / downgrade / upgrade)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:ci@localhost:5432/nl_alembic
+      PSQL: psql -h localhost -U postgres -v ON_ERROR_STOP=1
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install "alembic>=1.13,<2" "sqlalchemy>=2.0,<3" "psycopg[binary]>=3.2,<4"
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: $PSQL -c "CREATE DATABASE nl_alembic"
+      - name: upgrade head
+        working-directory: services/api
+        run: alembic upgrade head && alembic current
+      - run: $PSQL -d nl_alembic -f database/checks/verify_head.sql
+      - name: upgrade head (idempotence — aucune révision rejouée)
+        working-directory: services/api
+        run: alembic upgrade head
+      - name: Données de référence appliquées deux fois (idempotence)
+        run: |
+          $PSQL -d nl_alembic -f database/seeds/0001_reference_data.sql
+          $PSQL -d nl_alembic -f database/seeds/0001_reference_data.sql
+          test "$($PSQL -d nl_alembic -Atc 'SELECT count(*) FROM professions')" = "12"
+      - name: downgrade base
+        working-directory: services/api
+        run: alembic downgrade base
+      - run: $PSQL -d nl_alembic -f database/checks/verify_base.sql
+      - name: upgrade head (réapplication)
+        working-directory: services/api
+        run: alembic upgrade head
+      - run: $PSQL -d nl_alembic -f database/checks/verify_head.sql
 
   design-tokens:
     name: Design system (contrastes WCAG)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
       - run: npm test
@@ -52,7 +104,8 @@ jobs:
 
   compose:
     name: Validation docker-compose
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: cp .env.example .env && docker compose -f infra/docker-compose.yml --env-file .env config -q

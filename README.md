@@ -8,7 +8,8 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 
 | Phase | Statut |
 |---|---|
-| 1 — Analyse et architecture | ✅ livrée, **en attente de validation** — voir [`docs/VALIDATION-PHASE1.md`](docs/VALIDATION-PHASE1.md) |
+| 1 — Analyse et architecture | ✅ livrée — [`docs/VALIDATION-PHASE1.md`](docs/VALIDATION-PHASE1.md) |
+| 1.1 — Validation technique | ✅ infrastructure validée 30/30 sur Windows, en attente du push et de la CI — [`docs/VALIDATION-PHASE1.1.md`](docs/VALIDATION-PHASE1.1.md), décision : [`docs/PHASE2-READINESS.md`](docs/PHASE2-READINESS.md) |
 | 2 — MVP fonctionnel | 📋 préparée — voir [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
 | 3 à 7 | 🗓️ planifiées — voir [`docs/06-roadmap.md`](docs/06-roadmap.md) |
 
@@ -29,7 +30,7 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 apps/web            Next.js (Phase 2)          apps/mobile        Expo (Phase 5)
 services/api        FastAPI + Alembic          packages/design-tokens   jetons de design
 database            schéma SQL, données de référence, tests de contraintes
-infra               docker-compose (PostgreSQL+pgvector, Redis, MinIO, Mailpit)
+infra               docker-compose (PostgreSQL+pgvector, Redis, RustFS (S3), Mailpit)
 scripts             utilitaires PowerShell et Bash
 ```
 
@@ -46,7 +47,13 @@ docker compose -f infra/docker-compose.yml --env-file .env up -d
 cd packages\design-tokens; npm test  # contrastes WCAG du design system
 ```
 
-Interfaces locales : MinIO http://localhost:9001 · Mailpit http://localhost:8025
+Validation complète en une commande (Docker, Alembic réel, pgvector, tests, secrets) — aucune donnée existante supprimée :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase1.1.ps1
+```
+
+Interfaces locales : console S3 (RustFS) http://localhost:9001/rustfs/console/ · Mailpit http://localhost:8025
 
 ## Principes non négociables
 

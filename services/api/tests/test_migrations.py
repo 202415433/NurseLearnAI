@@ -1,6 +1,10 @@
-"""Vérifie la chaîne de révisions Alembic sans dépendre d'Alembic installé.
+"""Vérifie la chaîne de révisions Alembic SANS exécuter Alembic (substitut).
 
-Un faux module `alembic.op` capture le SQL émis par chaque révision ; ce SQL est
+ATTENTION : ce test valide le SQL émis par chaque révision, pas l'outil Alembic
+lui-même. L'exécution réelle (`alembic upgrade head` / `downgrade base`) est faite
+par `scripts/validate-phase1.1.ps1` et par la CI (job « Alembic réel »).
+
+Un faux module `alembic.op` (curseur du pilote, sans paramètres) capture le SQL émis par chaque révision ; ce SQL est
 ensuite exécuté sur PostgreSQL (upgrade -> downgrade -> upgrade). La révision
 0002 (pgvector) n'est exécutée que si l'extension `vector` est disponible.
 """
@@ -24,9 +28,22 @@ PSQL = ["psql", "-h", os.environ.get("NL_TEST_PGHOST", "localhost"),
 def _load_revisions():
     captured: list[str] = []
     fake_alembic = types.ModuleType("alembic")
-    fake_alembic.op = types.SimpleNamespace(execute=captured.append)
+    class _Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, sql, params=None):
+            assert params is None, "le script doit être envoyé SANS paramètres (sinon les % sont interprétés)"
+            captured.append(sql)
+
+    dbapi = types.SimpleNamespace(cursor=_Cursor)
+    bind = types.SimpleNamespace(connection=types.SimpleNamespace(dbapi_connection=dbapi))
+    fake_alembic.op = types.SimpleNamespace(get_bind=lambda: bind)
     sys.modules["alembic"] = fake_alembic
-    sys.path.insert(0, str(VERSIONS))
+    sys.path.insert(0, str(VERSIONS.parent))
     revs = {}
     for f in sorted(VERSIONS.glob("0*.py")):
         spec = importlib.util.spec_from_file_location(f.stem, f)
@@ -43,12 +60,20 @@ def _psql(db: str, sql: str) -> str:
     return p.stdout.strip()
 
 
+def test_versions_folder_contains_only_revisions():
+    # Alembic charge TOUT fichier .py de versions/ comme une révision : un module
+    # utilitaire placé là fait échouer « alembic upgrade » (anomalie A10).
+    for f in VERSIONS.glob("*.py"):
+        text = f.read_text(encoding="utf-8")
+        assert "\nrevision = " in text and "\ndown_revision = " in text, f"{f.name} n'est pas une révision Alembic"
+
+
 def test_revision_chain_is_linear():
     revs, _ = _load_revisions()
     heads = [r for r in revs if not any(m.down_revision == r for m in revs.values())]
     roots = [r for r, m in revs.items() if m.down_revision is None]
     assert roots == ["0001_initial_schema"]
-    assert heads == ["0002_pgvector"]
+    assert heads == ["0003_business_rules"]
     for r, m in revs.items():
         assert m.down_revision is None or m.down_revision in revs, r
 
@@ -58,13 +83,14 @@ def _has_vector() -> bool:
 
 
 def test_core_upgrade_downgrade_upgrade_on_postgres():
-    _run_chain(["0001_initial_schema"])
+    # Sans pgvector : 0001 puis 0003 (0003 ne dépend d'aucun objet de 0002).
+    _run_chain(["0001_initial_schema", "0003_business_rules"])
 
 
 def test_pgvector_revision_on_postgres():
     if not _has_vector():
         pytest.skip("Extension pgvector absente : révision 0002 vérifiée en CI (image pgvector/pgvector:pg16)")
-    _run_chain(["0001_initial_schema", "0002_pgvector"])
+    _run_chain(["0001_initial_schema", "0002_pgvector", "0003_business_rules"])
 
 
 def _run_chain(chain: list[str]) -> None:

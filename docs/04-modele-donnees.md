@@ -95,8 +95,9 @@ Corriger une leçon publiée = créer la version `n+1`, la faire relire, la publ
 |---|---|---|
 | `0001_initial_schema` | Schéma complet | `0001_core_down.sql` (détruit les données) |
 | `0002_pgvector` | Colonne `embedding vector(1536)` + index HNSW | `0002_pgvector_down.sql` |
+| `0003_business_rules` | Phase 1.1 : relecteurs et formateurs **habilités** (permission vérifiée par déclencheur), validation pratique limitée au formateur global ou de l'établissement de l'apprenant, isolation des contenus privés d'établissement | `0003_business_rules_down.sql` |
 
-Les révisions Alembic exécutent les fichiers SQL versionnés (ADR-0002). En Phase 2, les modèles SQLAlchemy sont écrits pour correspondre au schéma et un test `alembic check` garantit l'absence de divergence ; les migrations suivantes peuvent alors être auto-générées puis relues.
+Les révisions Alembic exécutent les fichiers SQL versionnés (ADR-0002) via `exec_driver_sql` (envoi brut, sans interprétation des `%` ni découpage). En Phase 2, les modèles SQLAlchemy sont écrits pour correspondre au schéma et un test `alembic check` garantit l'absence de divergence ; les migrations suivantes peuvent alors être auto-générées puis relues.
 
 ## 8. Données de référence (`database/seeds/0001_reference_data.sql`)
 
