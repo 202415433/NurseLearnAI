@@ -31,7 +31,7 @@ def _load_revisions():
     connection = types.SimpleNamespace(exec_driver_sql=captured.append)
     fake_alembic.op = types.SimpleNamespace(get_bind=lambda: connection)
     sys.modules["alembic"] = fake_alembic
-    sys.path.insert(0, str(VERSIONS))
+    sys.path.insert(0, str(VERSIONS.parent))
     revs = {}
     for f in sorted(VERSIONS.glob("0*.py")):
         spec = importlib.util.spec_from_file_location(f.stem, f)
@@ -46,6 +46,14 @@ def _psql(db: str, sql: str) -> str:
     if p.returncode:
         raise RuntimeError(p.stderr)
     return p.stdout.strip()
+
+
+def test_versions_folder_contains_only_revisions():
+    # Alembic charge TOUT fichier .py de versions/ comme une révision : un module
+    # utilitaire placé là fait échouer « alembic upgrade » (anomalie A10).
+    for f in VERSIONS.glob("*.py"):
+        text = f.read_text(encoding="utf-8")
+        assert "\nrevision = " in text and "\ndown_revision = " in text, f"{f.name} n'est pas une révision Alembic"
 
 
 def test_revision_chain_is_linear():

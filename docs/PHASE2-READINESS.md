@@ -9,7 +9,7 @@
 
 ### Pourquoi pas GO maintenant
 
-1. **Infrastructure non prouvée** : le premier lancement sur votre PC a échoué au démarrage des conteneurs (image MinIO retirée de Docker Hub, corrigée par RustFS) ; Docker, Alembic réel et pgvector n'ont donc pas encore été exécutés de bout en bout. La Phase 1.1 a justement trouvé un défaut bloquant (A1) qui aurait fait échouer toutes les migrations réelles. La correction n'est validée qu'avec un substitut.
+1. **Infrastructure partiellement prouvée** : sur votre PC, Redis, S3 et Mailpit fonctionnent et la suite de tests passe sur PostgreSQL + pgvector réels ; mais Alembic réel a échoué (A10) et PostgreSQL n'a pas pu publier son port (A11). Les deux sont corrigés, pas encore revérifiés. La Phase 1.1 a justement trouvé un défaut bloquant (A1) qui aurait fait échouer toutes les migrations réelles. La correction n'est validée qu'avec un substitut.
 2. **Aucune application exécutable** : pas d'API, pas d'interface. La Phase 2 du plan initial suppose ce socle ; la démarrer telle quelle mélangerait mise en place de l'infrastructure applicative et fonctionnalités métier, ce qui rend les écarts difficiles à isoler.
 3. **Corrections non intégrées** : la branche `phase-1.1` n'est ni poussée ni passée en CI sur GitHub.
 
@@ -21,9 +21,9 @@ Le modèle de données est solide et testé (44 tests), les règles métier sont
 
 | # | Critère | Preuve attendue | État |
 |---|---|---|---|
-| C1 | Services Docker démarrés et sains (PostgreSQL+pgvector, Redis, stockage S3 RustFS, Mailpit), volumes persistants, aucun secret dans les journaux | Journal `docs/validation-logs/phase1.1-*.log` sans FAIL | <!-- C1 -->❌ exécution n° 1 (MinIO) · ⏳ exécution n° 2 |
-| C2 | `alembic upgrade head` → 60 tables, pgvector, HNSW, 0003 ; `upgrade head` idempotent ; `downgrade base` → base vide ; réapplication OK | Même journal + job CI « Alembic réel » | <!-- C2 -->⏳ |
-| C3 | Suite pytest complète **avec** pgvector, 0 test ignoré | Même journal + job CI « Schéma » | <!-- C3 -->⏳ |
+| C1 | Services Docker démarrés et sains (PostgreSQL+pgvector, Redis, stockage S3 RustFS, Mailpit), volumes persistants, aucun secret dans les journaux | Journal `docs/validation-logs/phase1.1-*.log` sans FAIL | <!-- C1 -->🟡 Redis, S3, Mailpit, secrets ✅ · PostgreSQL ❌ (port, corrigé) · ⏳ exécution n° 3 |
+| C2 | `alembic upgrade head` → 60 tables, pgvector, HNSW, 0003 ; `upgrade head` idempotent ; `downgrade base` → base vide ; réapplication OK | Même journal + job CI « Alembic réel » | <!-- C2 -->❌ exécution n° 2 (A10, corrigé) · ⏳ |
+| C3 | Suite pytest complète **avec** pgvector, 0 test ignoré | Même journal + job CI « Schéma » | <!-- C3 -->✅ 45 réussis, 0 ignoré, pgvector réel (exécution n° 2) |
 | C4 | Branche `phase-1.1` poussée, CI GitHub verte (4 jobs) | Page Actions | ⏳ (votre autorisation de push) |
 | C5 | Lot d'intégration 1.2 livré et vérifié (ci-dessous) | Tests + démonstration | ⏳ |
 | C6 | Un seul dossier de travail local (`C:\NurseLearnAI-git`) | — | ⏳ (vous) |

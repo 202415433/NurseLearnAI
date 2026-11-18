@@ -110,6 +110,9 @@ Result "aucune_cle_ia_payante" $llmOff
 
 $compose = @("compose", "-f", "infra/docker-compose.yml", "--env-file", ".env")
 $PGU = $envVars['POSTGRES_USER']; $PGD = $envVars['POSTGRES_DB']
+if ($envVars['POSTGRES_PORT'] -eq '5432') {
+    Log "Attention : POSTGRES_PORT=5432 dans .env. Ce port est souvent occupé ou réservé sous Windows ; 55432 est recommandé."
+}
 
 # -----------------------------------------------------------------------------
 # 3. Démarrage et santé des services
@@ -119,6 +122,10 @@ Result "compose_config" ($r.Code -eq 0)
 $r = Run "docker compose up -d" { docker @compose up -d }
 Result "compose_up" ($r.Code -eq 0)
 if ($r.Code -ne 0) { Log "Échec du démarrage : voir les erreurs ci-dessus (téléchargement d'image, port occupé...)." }
+if ($r.Out -match "ports are not available") {
+    Log "Port hôte refusé par Windows. Dans .env, utilisez par exemple POSTGRES_PORT=55432 et le même port dans DATABASE_URL,"
+    Log "puis relancez le script. Plages réservées par Windows : netsh interface ipv4 show excludedportrange protocol=tcp"
+}
 
 Log "Attente des health checks (max 120 s)..."
 $deadline = (Get-Date).AddSeconds(120)
@@ -194,8 +201,10 @@ $r = Run "Données de référence appliquées deux fois" {
 Result "seeds_idempotents" ($r.Code -eq 0 -and $r.Out.Trim().EndsWith("12"))
 $r = Run "Alembic : downgrade base" { Alembic "downgrade base" }
 Result "alembic_downgrade_base" ($r.Code -eq 0)
+$downOk = ($r.Code -eq 0)
 $r = Run "Vérification base vide" { Verify "verify_base.sql" }
-Result "alembic_base_vide" ($r.Code -eq 0)
+# Une base vide ne prouve rien si le retour arrière lui-même a échoué.
+Result "alembic_base_vide" ($downOk -and $r.Code -eq 0)
 $r = Run "Alembic : upgrade head (réapplication)" { Alembic "upgrade head" }
 $r2 = Run "Vérification après réapplication" { Verify "verify_head.sql" }
 Result "alembic_reapplication" ($r.Code -eq 0 -and $r2.Code -eq 0)

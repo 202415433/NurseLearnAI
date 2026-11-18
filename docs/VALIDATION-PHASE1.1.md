@@ -25,7 +25,7 @@
 |---|---|
 | `pytest database/tests services/api/tests` (état initial, avant correction) | 32 réussis, 1 ignoré (pgvector) |
 | `npm test` (design-tokens, état initial) | 58/58 |
-| `pytest database/tests services/api/tests` (après corrections) | **44 réussis, 1 ignoré (pgvector absent de cet environnement)** |
+| `pytest database/tests services/api/tests` (après corrections) | **45 réussis, 1 ignoré (pgvector absent de cet environnement)** |
 | `npm test` (design-tokens, final) | **58/58** |
 | `psql -f 0001 -f 0003 -f checks/verify_head.sql` | échoue volontairement sur « Extension pgvector absente » → le contrôle détecte bien l'absence |
 | `psql -f 0003_down -f 0001_down -f checks/verify_base.sql` | OK : base vide après retour arrière |
@@ -49,9 +49,25 @@ Poste `KARAMBAGASSAMA`, Windows PowerShell 5.1, Docker 29.8.1 (client et serveur
 | Tous les contrôles suivants (santé, PostgreSQL, persistance, Alembic, pgvector, pytest) | ❌ non exécutables, conséquence directe de l'échec précédent |
 | « Aucun secret dans les journaux » | ✅ affiché, mais **sans valeur** : 0 Ko de journaux analysés. Le script a été corrigé pour échouer dans ce cas |
 
-### Exécution n° 2 — après correction (RustFS)
+### Exécution n° 2 — 18 novembre 2026, 14 h 43 (RustFS ; journal `phase1.1-20261118-144343.log`)
 
-**Non encore exécutée.** Docker (démarrage, santé, persistance), Alembic réel et pgvector restent **non vérifiés**.
+Résultat : 30 contrôles, 19 réussis, 11 échecs. Deux nouvelles anomalies bloquantes (A10, A11), corrigées depuis.
+
+| Contrôle | Résultat |
+|---|---|
+| Images téléchargées (pgvector/pg16, rustfs 1.0.0, mailpit) ; réseau et 3 volumes nommés créés | ✅ |
+| Redis, RustFS (S3), Mailpit : démarrés et **healthy** ; `/health` S3 et Mailpit HTTP 200 ; Redis `PING` authentifié | ✅ |
+| **PostgreSQL** : `ports are not available … 127.0.0.1:5432 … forbidden by its access permissions` | ❌ **A11** — port 5432 refusé par Windows (plage réservée ou PostgreSQL local) |
+| Connexion PostgreSQL, pgvector, persistance | ❌ conséquence de A11 (le conteneur n'a démarré qu'au redémarrage du test de persistance) |
+| **Alembic réel** : `Could not determine revision id from filename _sql.py` | ❌ **A10** — Alembic charge tout `.py` de `versions/` comme une révision |
+| **pytest sur PostgreSQL 16 + pgvector (conteneur)** | ✅ **45 réussis, 0 ignoré** — première exécution réelle du test pgvector |
+| Design system | ✅ 58/58 |
+| Secrets dans les journaux | ✅ 0 fuite sur 39 Ko de journaux réels |
+| « Base vide après retour arrière » | ⚠️ affiché réussi mais **sans valeur** (aucune migration n'avait été appliquée) — corrigé : dépend désormais du succès du `downgrade` |
+
+### Exécution n° 3 — après corrections A10/A11
+
+**Non encore exécutée.** Alembic réel, connexion PostgreSQL et persistance des volumes restent **non vérifiés**. Prérequis : `POSTGRES_PORT=55432` dans votre `.env` (voir §10).
 
 ## 5. État par composant
 
@@ -59,9 +75,9 @@ Poste `KARAMBAGASSAMA`, Windows PowerShell 5.1, Docker 29.8.1 (client et serveur
 |---|---|---|
 | Schéma (60 tables, contraintes, FK, index) | ✅ vérifié sur PostgreSQL 16 | 44 tests |
 | Migration 0003 (règles métier) | ✅ vérifiée (SQL) | 12 nouveaux tests |
-| Alembic **réel** | <!-- ALEMBIC -->⏳ non vérifié — testé uniquement avec un substitut qui exécute le SQL de chaque révision | — |
-| pgvector (0002) | <!-- PGVECTOR -->⏳ non vérifié | — |
-| Docker Compose | <!-- DOCKER -->❌ puis corrigé : démarrage impossible avec MinIO (exécution n° 1) ; correction RustFS non encore exécutée | journal n° 1 |
+| Alembic **réel** | <!-- ALEMBIC -->❌ exécution n° 2 (A10), corrigé · ⏳ à revérifier | journal n° 2 |
+| pgvector (0002) | <!-- PGVECTOR -->✅ extension et test pgvector exécutés réellement (pytest, exécution n° 2) · ⏳ via Alembic | journal n° 2 |
+| Docker Compose | <!-- DOCKER -->✅ Redis, S3, Mailpit sains · ❌ PostgreSQL (port, A11), corrigé · ⏳ à revérifier | journaux n° 1 et 2 |
 | CI GitHub | ✅ commit `79ef00f` : 3 jobs réussis sur GitHub · ⏳ nouvelle CI (4 jobs, dont Alembic réel) validée localement uniquement | page Actions, run #1 |
 | Design system | ✅ | 58 tests |
 
@@ -77,12 +93,16 @@ Poste `KARAMBAGASSAMA`, Windows PowerShell 5.1, Docker 29.8.1 (client et serveur
 | A6 | `C:\NurseLearnAI` est une copie **hors Git**, figée à la Phase 1 ; le dépôt de travail est `C:\NurseLearnAI-git`. | Moyenne (confusion) | Signalée — à archiver par vous |
 | A7 | Le dossier `.github` ne peut pas être écrit à distance sur votre PC : le nouveau `ci.yml` est dans la branche Git `phase-1.1`, pas encore dans `C:\NurseLearnAI-git`. | Faible | Ouverte (résolue par le push) |
 | A9 | **L'image `minio/minio` n'existe plus sur Docker Hub** (« pull access denied ») : `docker compose up` échouait sur tout poste neuf. Constaté au premier lancement du script sur votre PC. | Bloquante | Corrigée : remplacement par RustFS `rustfs/rustfs:1.0.0` (compatible S3, Apache 2.0), health check ajouté, volume `s3data` |
+| A10 | **Alembic réel échouait** : le module utilitaire `_sql.py` était dans `alembic/versions/`, où Alembic exige que chaque fichier soit une révision. Le substitut, qui ne chargeait que `0*.py`, ne pouvait pas le voir. | Bloquante | Corrigée : module déplacé (`alembic/nl_sql.py`) + test de non-régression sur le contenu de `versions/` |
+| A11 | **Port 5432 refusé par Windows** sur votre poste (plage réservée ou PostgreSQL local). | Bloquante sur votre poste | Corrigée : port par défaut 55432 (`.env.example`, compose) ; le script détecte l'erreur et indique la correction. **Votre `.env` existant doit être ajusté** (le script ne modifie jamais un `.env` existant) |
+| A12 | Contrôle « base vide » réussi sans qu'aucune migration n'ait tourné. | Faible (faux positif) | Corrigée |
 | A8 | Isolation par établissement **à l'exécution** (un utilisateur ne lit que les données de son établissement) : impossible à vérifier, aucune API n'existe. | Élevée pour la Phase 2 | Ouverte — exigence du lot d'intégration |
 
 ## 7. Corrections apportées
 
 - `database/schema/0003_business_rules.sql` (+ retour arrière) et révision Alembic `0003_business_rules` — **additives**, aucune table ni colonne modifiée, compatibilité du schéma préservée.
-- Révisions Alembic 0001–0003 : exécution par `exec_driver_sql`.
+- Révisions Alembic 0001–0003 : exécution par `exec_driver_sql` ; module utilitaire sorti de `versions/` (A10).
+- Port PostgreSQL par défaut 55432 (A11) ; contrôle « base vide » conditionné au retour arrière (A12).
 - `database/checks/verify_head.sql` et `verify_base.sql` : contrôles réutilisés par la CI et par le script Windows.
 - `database/tests/test_business_rules.py` : 12 nouveaux tests (RBAC, habilitations, validation pratique, isolation) ; tests existants adaptés (le relecteur doit désormais être habilité).
 - `.github/workflows/ci.yml` : nouveau job **Alembic réel** (upgrade → contrôles → upgrade idempotent → données de référence ×2 → downgrade base → contrôle → upgrade → contrôles), test pgvector exécuté, actions à jour.
@@ -111,6 +131,17 @@ Poste `KARAMBAGASSAMA`, Windows PowerShell 5.1, Docker 29.8.1 (client et serveur
 4. Données réglementaires (12 métiers) toujours `pending_expert_review`.
 5. Deux dossiers locaux (`C:\NurseLearnAI` et `C:\NurseLearnAI-git`) : risque de modifier la mauvaise copie.
 
-## 10. Critères de passage en Phase 2
+## 10. Corriger votre `.env` (A11)
+
+```powershell
+cd C:\NurseLearnAI-git
+(Get-Content .env) -replace '^POSTGRES_PORT=.*','POSTGRES_PORT=55432' -replace 'localhost:5432/','localhost:55432/' | Set-Content .env
+docker compose -f infra/docker-compose.yml --env-file .env up -d --force-recreate postgres
+powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase1.1.ps1
+```
+
+Aucun volume n'est supprimé : `--force-recreate` recrée seulement le conteneur avec le nouveau port.
+
+## 11. Critères de passage en Phase 2
 
 Voir [`PHASE2-READINESS.md`](PHASE2-READINESS.md).

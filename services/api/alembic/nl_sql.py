@@ -1,11 +1,15 @@
-"""Lecture des fichiers SQL versionnés partagés avec /database/schema."""
+"""Lecture et exécution des fichiers SQL versionnés partagés avec /database/schema.
+
+Ce module est volontairement HORS de alembic/versions/ : Alembic considère tout
+fichier .py de ce dossier comme une révision (anomalie A10, Phase 1.1).
+"""
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
 # Dans le conteneur Docker, /database est monté ; en local on remonte l'arborescence.
-SCHEMA_DIR = Path(os.environ.get("NL_SCHEMA_DIR", Path(__file__).resolve().parents[4] / "database" / "schema"))
+SCHEMA_DIR = Path(os.environ.get("NL_SCHEMA_DIR", Path(__file__).resolve().parents[3] / "database" / "schema"))
 
 
 def read_sql(name: str) -> str:
