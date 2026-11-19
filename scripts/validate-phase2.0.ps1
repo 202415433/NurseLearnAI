@@ -63,13 +63,18 @@ Result "branche_phase_2_0" ($branch -eq "phase-2.0-security-quality") $branch
 # -----------------------------------------------------------------------------
 # 1. package-lock.json aligné sur package.json (aucun node_modules écrit chez vous)
 # -----------------------------------------------------------------------------
-# Trois tentatives, de la plus conservatrice à la plus large (anomalie npm « reading 'edgesOut' »
-# connue avec les « overrides » et --package-lock-only) ; node_modules reste dans un volume anonyme.
-$npmFlags = "--no-audit --no-fund --loglevel=error"
-$r = Run "Mise à jour de package-lock.json" {
-    docker run --rm -v "${root}:/repo" -v /repo/apps/web/node_modules -w /repo/apps/web node:22-bookworm sh -c "(npm install --package-lock-only $npmFlags || (echo 'repli 1 : installation complète' && npm install $npmFlags) || (echo 'repli 2 : lockfile régénéré à partir de package.json' && rm -f package-lock.json && npm install $npmFlags)) && npm ci --dry-run $npmFlags > /dev/null && echo lock-ok"
+# Travail sur une copie dans le conteneur : le lockfile du dépôt n'est remplacé qu'en cas de succès ;
+# en cas d'échec, diagnostic automatique (variantes de package.json, fin du journal npm).
+$r = Run "Mise à jour de package-lock.json (scripts/npm-lock.sh)" {
+    docker run --rm -v "${root}:/repo" node:22-bookworm sh /repo/scripts/npm-lock.sh
 }
 Result "lock_npm_coherent" ($r.Code -eq 0 -and $r.Out -match 'lock-ok')
+if (-not $results["lock_npm_coherent"]) {
+    # Sans lockfile cohérent, la construction Docker (npm ci) échouerait : inutile de continuer 15 minutes.
+    Log ""; Log "ARRÊT : package-lock.json n'a pas pu être mis à jour (diagnostic ci-dessus). Le lockfile du dépôt est intact."
+    Log "Journal : $log"
+    exit 1
+}
 
 # -----------------------------------------------------------------------------
 # 2. Audits de dépendances
