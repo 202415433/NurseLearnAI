@@ -15,13 +15,28 @@ fresh_copy() {
 }
 log_tail() { tail -n 25 "$(ls -t /root/.npm/_logs/*-debug-0.log | head -1)" 2>/dev/null; }
 
-fresh_copy /tmp/web
-if try_lock /tmp/web; then
-  cp /tmp/web/package-lock.json "$SRC/package-lock.json"
-  echo "lock-ok (package.json du dépôt)"
-  exit 0
-fi
-echo "ÉCHEC avec package.json du dépôt :"; cat /tmp/npm.out; echo "--- fin du journal npm :"; log_tail
+# Diagnostic du 18/11 : l'anomalie npm 10 « reading 'edgesOut' » (build-ideal-tree #loadPeerSet) apparaît
+# à la mise à niveau de vitest 3 → 4, indépendamment de l'override postcss. Tentatives successives :
+#   1. npm 10 (fourni avec Node 22), lockfile existant ;
+#   2. npm 10, lockfile reconstruit depuis package.json ;
+#   3-4. npm 11 (anomalie corrigée dans les versions récentes d'Arborist), lockfile existant puis reconstruit.
+# Le lockfile retenu doit ensuite être accepté par « npm ci » de npm 10 (celui de l'image Docker).
+attempt() { # $1 = libellé ; $2 = commande npm ; $3 = "frais" pour repartir sans lockfile
+  fresh_copy /tmp/web
+  [ "${3:-}" = "frais" ] && rm -f /tmp/web/package-lock.json
+  if (cd /tmp/web && $2 install --package-lock-only $FLAGS > /tmp/npm.out 2>&1) \
+     && (cd /tmp/web && npm ci --dry-run $FLAGS > /dev/null 2>&1); then
+    cp /tmp/web/package-lock.json "$SRC/package-lock.json"
+    echo "lock-ok ($1)"
+    exit 0
+  fi
+  echo "tentative « $1 » : ÉCHEC : $(grep -m1 'npm error' /tmp/npm.out)"
+}
+attempt "npm 10, lockfile existant" "npm"
+attempt "npm 10, lockfile reconstruit" "npm" frais
+attempt "npm 11, lockfile existant" "npx -y npm@11"
+attempt "npm 11, lockfile reconstruit" "npx -y npm@11" frais
+echo "Aucune tentative n'a abouti. Fin du journal npm :"; log_tail
 
 echo; echo "=== Diagnostic (aucun fichier du dépôt modifié) ==="
 node -e '

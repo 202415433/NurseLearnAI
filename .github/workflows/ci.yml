@@ -175,7 +175,7 @@ jobs:
           PGPASSWORD: ci
       - name: Installation et build
         working-directory: apps/web
-        run: npm install && npm run typecheck && npm run lint && npm run format:check && npm test && npm run build
+        run: npm ci && npm run typecheck && npm run lint && npm run format:check && npm test && npm run build
       - name: Navigateur Playwright
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
