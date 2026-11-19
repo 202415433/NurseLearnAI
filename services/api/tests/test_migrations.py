@@ -8,6 +8,7 @@ Un faux module `alembic.op` (curseur du pilote, sans paramètres) capture le SQL
 ensuite exécuté sur PostgreSQL (upgrade -> downgrade -> upgrade). La révision
 0002 (pgvector) n'est exécutée que si l'extension `vector` est disponible.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -20,14 +21,26 @@ from pathlib import Path
 import pytest
 
 VERSIONS = Path(__file__).resolve().parents[1] / "alembic" / "versions"
-PSQL = ["psql", "-h", os.environ.get("NL_TEST_PGHOST", "localhost"),
-        "-p", os.environ.get("NL_TEST_PGPORT", "5432"),
-        "-U", os.environ.get("NL_TEST_PGUSER", "postgres"), "-v", "ON_ERROR_STOP=1", "-X", "-q", "-At"]
+PSQL = [
+    "psql",
+    "-h",
+    os.environ.get("NL_TEST_PGHOST", "localhost"),
+    "-p",
+    os.environ.get("NL_TEST_PGPORT", "5432"),
+    "-U",
+    os.environ.get("NL_TEST_PGUSER", "postgres"),
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-X",
+    "-q",
+    "-At",
+]
 
 
 def _load_revisions():
     captured: list[str] = []
     fake_alembic = types.ModuleType("alembic")
+
     class _Cursor:
         def __enter__(self):
             return self
@@ -100,13 +113,19 @@ def _run_chain(chain: list[str]) -> None:
     try:
         count = "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'"
         for r in chain:
-            captured.clear(); revs[r].upgrade(); _psql(db, captured[0])
+            captured.clear()
+            revs[r].upgrade()
+            _psql(db, captured[0])
         n = _psql(db, count)
         for r in reversed(chain):
-            captured.clear(); revs[r].downgrade(); _psql(db, captured[0])
+            captured.clear()
+            revs[r].downgrade()
+            _psql(db, captured[0])
         assert _psql(db, count) == "0"
         for r in chain:
-            captured.clear(); revs[r].upgrade(); _psql(db, captured[0])
+            captured.clear()
+            revs[r].upgrade()
+            _psql(db, captured[0])
         assert _psql(db, count) == n
     finally:
         _psql("postgres", f"DROP DATABASE IF EXISTS {db} WITH (FORCE)")

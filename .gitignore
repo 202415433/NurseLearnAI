@@ -17,3 +17,6 @@ Thumbs.db
 apps/web/app/tokens.css
 *.egg-info/
 build/
+
+# Rapports de validation locaux (journaux, audits npm) : preuves conservées sur le poste, hors Git
+docs/validation-logs/*.json

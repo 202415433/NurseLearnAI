@@ -25,7 +25,9 @@ describe("validation des paramètres d'URL", () => {
 
 describe("client API", () => {
   it("appelle le bon point d'accès avec la langue", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [], total: 0, limit: 100, offset: 0 })));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ items: [], total: 0, limit: 100, offset: 0 })));
     vi.stubGlobal("fetch", fetchMock);
     await api.professions("CA-QC", "en");
     const [url, init] = fetchMock.mock.calls[0];

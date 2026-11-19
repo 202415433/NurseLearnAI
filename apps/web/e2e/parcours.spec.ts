@@ -3,7 +3,9 @@ import { expect, test, type Page } from "@playwright/test";
 
 // Aucune violation d'accessibilité « serious » ou « critical » (objectif WCAG 2.2 AA).
 async function expectAccessible(page: Page) {
-  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .analyze();
   const blocking = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(blocking.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 }
@@ -103,8 +105,6 @@ test("thème sombre : bascule, mémorisation et accessibilité", async ({ page }
   await expectAccessible(page);
 });
 
-// Remarque : avec un état de chargement (loading.tsx), Next.js diffuse la page en flux ; le statut HTTP
-// peut alors rester 200 (avec <meta name="robots" content="noindex">). On vérifie donc l'écran affiché.
 test("paramètres inconnus ou invalides → page introuvable", async ({ page }) => {
   for (const url of [
     "/fr/adresse-inexistante",
@@ -116,7 +116,9 @@ test("paramètres inconnus ou invalides → page introuvable", async ({ page }) 
     "/fr/programmes/00000000-0000-0000-0000-000000000000",
     "/fr/juridictions?pays=ZZ",
   ]) {
-    await page.goto(url);
+    const response = await page.goto(url);
+    // Statut HTTP réel 404 (Phase 2.0 : plus de réponse diffusée avant de savoir si la page existe).
+    expect(response?.status(), url).toBe(404);
     await expect(page.getByTestId("not-found"), url).toBeVisible();
   }
   await expectAccessible(page);

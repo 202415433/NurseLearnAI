@@ -17,7 +17,14 @@ const fr = {
   theme: { toDark: "Activer le thème sombre", toLight: "Activer le thème clair", dark: "Sombre", light: "Clair" },
   disclaimer:
     "NurseLearn AI est une plateforme de formation. Ses attestations internes ne sont ni un diplôme, ni une licence, ni une autorisation d'exercer.",
-  crumbs: { home: "Accueil", countries: "Pays", jurisdictions: "Juridiction", professions: "Métier", specialties: "Spécialités", programs: "Programmes" },
+  crumbs: {
+    home: "Accueil",
+    countries: "Pays",
+    jurisdictions: "Juridiction",
+    professions: "Métier",
+    specialties: "Spécialités",
+    programs: "Programmes",
+  },
   home: {
     title: "Apprenez les soins, à votre rythme, selon le référentiel de votre pays",
     lead: "Des parcours structurés du niveau débutant à la préparation professionnelle, pour l'assistance aux soins et les soins infirmiers.",
@@ -42,7 +49,13 @@ const fr = {
   jurisdictions: {
     title: "Choisissez votre juridiction",
     frameworkTitle: "Choisissez un référentiel",
-    kinds: { country: "Référentiel national", province: "Province", state: "État", region: "Région", framework: "Référentiel transnational" } as Record<string, string>,
+    kinds: {
+      country: "Référentiel national",
+      province: "Province",
+      state: "État",
+      region: "Région",
+      framework: "Référentiel transnational",
+    } as Record<string, string>,
     empty: "Aucun référentiel actif pour ce pays.",
   },
   professions: {
@@ -71,7 +84,8 @@ const fr = {
     title: "Catalogue des spécialités",
     lead: "Choisissez une spécialité pour voir les programmes publiés.",
     all: "Voir tous les programmes de ce métier",
-    count: (n: number) => (n === 0 ? "Aucun programme publié" : n > 1 ? `${n} programmes publiés` : "1 programme publié"),
+    count: (n: number) =>
+      n === 0 ? "Aucun programme publié" : n > 1 ? `${n} programmes publiés` : "1 programme publié",
     group: "Groupe",
   },
   programs: {
@@ -127,7 +141,14 @@ const en: Dictionary = {
   theme: { toDark: "Switch to dark theme", toLight: "Switch to light theme", dark: "Dark", light: "Light" },
   disclaimer:
     "NurseLearn AI is a training platform. Its internal attestations are not a diploma, a licence or an authorization to practise.",
-  crumbs: { home: "Home", countries: "Country", jurisdictions: "Jurisdiction", professions: "Occupation", specialties: "Specialties", programs: "Programs" },
+  crumbs: {
+    home: "Home",
+    countries: "Country",
+    jurisdictions: "Jurisdiction",
+    professions: "Occupation",
+    specialties: "Specialties",
+    programs: "Programs",
+  },
   home: {
     title: "Learn care at your own pace, following your country's framework",
     lead: "Structured paths from beginner to professional preparation, for care assistance and nursing.",
@@ -152,7 +173,13 @@ const en: Dictionary = {
   jurisdictions: {
     title: "Choose your jurisdiction",
     frameworkTitle: "Choose a framework",
-    kinds: { country: "National framework", province: "Province", state: "State", region: "Region", framework: "Transnational framework" },
+    kinds: {
+      country: "National framework",
+      province: "Province",
+      state: "State",
+      region: "Region",
+      framework: "Transnational framework",
+    },
     empty: "No active framework for this country.",
   },
   professions: {
@@ -173,20 +200,23 @@ const en: Dictionary = {
   },
   availability: {
     published: (n: number) => (n > 1 ? `${n} programs available` : "1 program available"),
-    inPreparation: (n: number) => (n > 1 ? `${n} programs in preparation, not yet validated` : "1 program in preparation, not yet validated"),
+    inPreparation: (n: number) =>
+      n > 1 ? `${n} programs in preparation, not yet validated` : "1 program in preparation, not yet validated",
     none: "No program yet",
   },
   specialties: {
     title: "Specialty catalogue",
     lead: "Choose a specialty to see published programs.",
     all: "See all programs for this occupation",
-    count: (n: number) => (n === 0 ? "No published program" : n > 1 ? `${n} published programs` : "1 published program"),
+    count: (n: number) =>
+      n === 0 ? "No published program" : n > 1 ? `${n} published programs` : "1 published program",
     group: "Group",
   },
   programs: {
     title: "Available programs",
     emptyTitle: "No program available yet",
-    emptyText: "Every program must be written and then validated by a qualified professional before publication. Nothing is published before that review.",
+    emptyText:
+      "Every program must be written and then validated by a qualified professional before publication. Nothing is published before that review.",
     modules: (n: number) => (n > 1 ? `${n} modules` : n === 1 ? "1 module" : "No published module"),
     see: "View program",
     levels: {

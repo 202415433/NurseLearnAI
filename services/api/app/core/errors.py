@@ -3,6 +3,7 @@
 Aucune trace technique n'est renvoyée au client ; le détail est journalisé
 avec l'identifiant de requête.
 """
+
 from __future__ import annotations
 
 import logging
@@ -19,8 +20,15 @@ PROBLEM_JSON = "application/problem+json"
 
 
 class ProblemError(Exception):
-    def __init__(self, status: int, detail: str, *, title: str | None = None,
-                 type_: str = "about:blank", extra: dict[str, Any] | None = None):
+    def __init__(
+        self,
+        status: int,
+        detail: str,
+        *,
+        title: str | None = None,
+        type_: str = "about:blank",
+        extra: dict[str, Any] | None = None,
+    ):
         super().__init__(detail)
         self.status = status
         self.detail = detail
@@ -33,8 +41,14 @@ def not_found(what: str) -> ProblemError:
     return ProblemError(404, f"{what} introuvable", type_="https://nurselearn.ai/problems/not-found")
 
 
-def problem_response(request: Request, status: int, title: str, detail: str | None,
-                     type_: str = "about:blank", extra: dict[str, Any] | None = None) -> JSONResponse:
+def problem_response(
+    request: Request,
+    status: int,
+    title: str,
+    detail: str | None,
+    type_: str = "about:blank",
+    extra: dict[str, Any] | None = None,
+) -> JSONResponse:
     body: dict[str, Any] = {"type": type_, "title": title, "status": status, "instance": request.url.path}
     if detail:
         body["detail"] = detail
@@ -53,13 +67,23 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(StarletteHTTPException)
     async def _http(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         detail = exc.detail if isinstance(exc.detail, str) else None
-        return problem_response(request, exc.status_code, HTTPStatus(exc.status_code).phrase, detail)
+        response = problem_response(request, exc.status_code, HTTPStatus(exc.status_code).phrase, detail)
+        # En-têtes utiles au client (ex. « Allow » pour un 405) ; jamais de détail interne.
+        for name, value in (exc.headers or {}).items():
+            response.headers[name] = value
+        return response
 
     @app.exception_handler(RequestValidationError)
     async def _validation(request: Request, exc: RequestValidationError) -> JSONResponse:
         errors = [{"loc": list(e.get("loc", ())), "msg": e.get("msg", "")} for e in exc.errors()]
-        return problem_response(request, 422, "Unprocessable Content", "Paramètres invalides",
-                                "https://nurselearn.ai/problems/validation", {"errors": errors})
+        return problem_response(
+            request,
+            422,
+            "Unprocessable Content",
+            "Paramètres invalides",
+            "https://nurselearn.ai/problems/validation",
+            {"errors": errors},
+        )
 
     @app.exception_handler(Exception)
     async def _unexpected(request: Request, exc: Exception) -> JSONResponse:

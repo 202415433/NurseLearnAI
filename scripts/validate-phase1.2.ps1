@@ -76,7 +76,9 @@ function Psql([string]$db, [string]$sql) { docker compose exec -T postgres psql 
 
 Log "NurseLearn AI — validation Phase 1.2 — $(Get-Date -Format o)"
 Log "Machine : $env:COMPUTERNAME — dossier $root — Git : $(git branch --show-current 2>$null) @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_phase_1_2" ((git branch --show-current 2>$null) -eq "phase-1.2") "$(git branch --show-current 2>$null)"
+# Branche phase-1.2 ou ultérieure (le script sert aussi de non-régression aux phases suivantes).
+$branch = git branch --show-current 2>$null
+Result "branche_phase_1_2_ou_suivante" ($branch -eq "phase-1.2" -or $branch -eq "main" -or $branch -like "phase-2*") "$branch"
 
 # -----------------------------------------------------------------------------
 # 1. Démarrage avec la commande cible
@@ -220,7 +222,7 @@ Psql "postgres" "DROP DATABASE IF EXISTS nl_validation_api WITH (FORCE)" | Out-N
 
 $r = Run "Web : typecheck + tests de composants (Vitest) + parcours Playwright + axe" {
     docker run --rm --network $net -v "${root}:/repo" -v /repo/apps/web/node_modules -w /repo/apps/web -e E2E_BASE_URL=http://web:3000 -e CI=1 `
-        node:22-bookworm sh -c "npm install --no-audit --no-fund --silent && npm run typecheck && npm test && npx playwright install --with-deps chromium > /dev/null && npx playwright test --reporter=list"
+        node:22-bookworm sh -c "npm ci --no-audit --no-fund --silent && npm run typecheck && npm test && npx playwright install --with-deps chromium > /dev/null && npx playwright test --reporter=list"
 }
 Result "web_tests_vitest_playwright_axe" ($r.Code -eq 0) (($r.Out -split "`n" | Select-String "Tests |passed|failed|skipped") -join " ")
 

@@ -1,8 +1,8 @@
 """Point d'entrée de l'API NurseLearn AI (Phase 1.2 : santé, référentiels, catalogue)."""
+
 from __future__ import annotations
 
 import logging
-import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app.core.clientip import TrustedProxies
 from app.core.config import API_VERSION, Settings, get_settings
 from app.core.errors import install_error_handlers, problem_response
 from app.core.logging import RequestContextMiddleware, configure_logging
@@ -23,9 +24,9 @@ log = logging.getLogger("nurselearn.api")
 
 DISCLAIMER = {
     "fr": "NurseLearn AI est une plateforme de formation. Ses attestations internes ne sont ni un diplôme, "
-          "ni une licence, ni une autorisation d'exercer.",
+    "ni une licence, ni une autorisation d'exercer.",
     "en": "NurseLearn AI is a training platform. Its internal attestations are not a diploma, "
-          "a licence or an authorization to practise.",
+    "a licence or an authorization to practise.",
 }
 
 
@@ -40,6 +41,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.redis = None
         if settings.redis_url:
             from redis.asyncio import Redis
+
             app.state.redis = Redis.from_url(settings.redis_url, socket_timeout=2)
         log.info("demarrage", extra={"env": settings.app_env, "version": API_VERSION})
         try:
@@ -54,13 +56,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=API_VERSION,
         description="API de la plateforme NurseLearn AI. " + DISCLAIMER["fr"],
         lifespan=lifespan,
-        docs_url="/docs",
+        # Hors production seulement (sauf DOCS_ENABLED explicite) : n'expose pas la structure interne.
+        docs_url="/docs" if settings.docs_visible else None,
+        openapi_url="/openapi.json" if settings.docs_visible else None,
         redoc_url=None,
     )
-    app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=False,
-                       allow_methods=["GET"], allow_headers=["Accept-Language", "X-Request-ID"],
-                       expose_headers=["X-Request-ID", "Content-Language"])
-    app.add_middleware(RateLimitMiddleware, per_minute=settings.rate_limit_per_minute, salt=secrets.token_hex(16))
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=False,
+        allow_methods=["GET"],
+        allow_headers=["Accept-Language", "X-Request-ID"],
+        expose_headers=["X-Request-ID", "Content-Language", "RateLimit-Limit", "RateLimit-Remaining"],
+        max_age=600,
+    )
+    app.add_middleware(
+        RateLimitMiddleware,
+        per_minute=settings.rate_limit_per_minute,
+        salt=settings.effective_rate_limit_salt,
+        trusted=TrustedProxies(settings.trusted_proxies),
+    )
     app.add_middleware(RequestContextMiddleware)
 
     @app.middleware("http")
@@ -69,6 +84,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         response.headers.setdefault("Cache-Control", "no-store")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Cross-Origin-Resource-Policy", "same-site")
+        # API JSON : rien à charger ni à afficher en cadre. /docs (Swagger UI) a besoin de ses ressources.
+        if not request.url.path.startswith("/docs"):
+            response.headers.setdefault("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
         locale = getattr(request.state, "locale", None)
         if locale:
             response.headers["Content-Language"] = locale
@@ -100,8 +120,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 log.exception("ready_redis")
                 checks["redis"] = "error"
         if "error" in checks.values():
-            return problem_response(request, 503, "Service Unavailable", "Dépendance indisponible",
-                                    extra={"checks": checks})
+            return problem_response(
+                request, 503, "Service Unavailable", "Dépendance indisponible", extra={"checks": checks}
+            )
         return JSONResponse({"status": "ready", "checks": checks})
 
     @app.get("/api/v1/about", tags=["santé"], summary="Mentions obligatoires")
@@ -111,5 +132,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(reference_router)
     app.include_router(catalog_router)
     return app
+
 
 # Lancement : uvicorn app.main:create_app --factory  (la configuration est lue au démarrage)

@@ -5,7 +5,8 @@ import { getDictionary, isLocale, locales } from "@/lib/i18n";
 
 function shape(value: unknown, path = ""): string[] {
   if (typeof value === "function") return [`${path}:fn`];
-  if (Array.isArray(value)) return [`${path}:array${value.length}`, ...value.flatMap((v, i) => shape(v, `${path}[${i}]`))];
+  if (Array.isArray(value))
+    return [`${path}:array${value.length}`, ...value.flatMap((v, i) => shape(v, `${path}[${i}]`))];
   if (value && typeof value === "object")
     return Object.entries(value).flatMap(([k, v]) => shape(v, path ? `${path}.${k}` : k));
   return [`${path}:${typeof value}`];

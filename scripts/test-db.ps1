@@ -1,4 +1,4 @@
-# Lance les tests du schéma contre le PostgreSQL du docker-compose.
+﻿# Lance les tests du schéma contre le PostgreSQL du docker-compose.
 # Prérequis : Python 3.10+, pytest (pip install pytest) et psql dans le PATH.
 $ErrorActionPreference = "Stop"
 $vars = @{}; Get-Content .env | Where-Object { $_ -match "^\s*[A-Z_]+=" } | ForEach-Object { $k, $v = $_ -split "=", 2; $vars[$k.Trim()] = $v.Trim() }

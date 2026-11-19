@@ -2,6 +2,7 @@
 
 Usage : python -m app.seed
 """
+
 from __future__ import annotations
 
 import logging
@@ -29,7 +30,7 @@ def main() -> int:
     with psycopg.connect(dsn) as conn:
         for f in files:
             with conn.cursor() as cur:
-                cur.execute(f.read_text(encoding="utf-8"))   # sans paramètres : multi-instructions, % non interprétés
+                cur.execute(f.read_text(encoding="utf-8"))  # sans paramètres : multi-instructions, % non interprétés
             log.info("donnees_appliquees", extra={"file": f.name})
         conn.commit()
     return 0

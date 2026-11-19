@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { getDictionary, isLocale } from "@/lib/i18n";
@@ -21,9 +22,12 @@ export default function ErrorPage({ reset }: { error: Error & { digest?: string 
         >
           {t.states.retry}
         </button>
-        <a href={`/${locale}`} className="inline-flex min-h-11 items-center rounded-md border border-border px-5 hover:border-primary">
+        <Link
+          href={`/${locale}`}
+          className="inline-flex min-h-11 items-center rounded-md border border-border px-5 hover:border-primary"
+        >
           {t.states.backHome}
-        </a>
+        </Link>
       </div>
     </div>
   );

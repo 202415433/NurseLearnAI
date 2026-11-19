@@ -66,6 +66,10 @@ Historique préservé (fusions sans réécriture ni écrasement), aucune protect
 | Ports locaux : 8000 et 18000 occupés par d'autres projets | NurseLearn publie l'API sur 28000 (`API_PORT`) |
 | Relecteur médical | Inscrire au moins un relecteur qualifié avant toute publication |
 
+## Lot 2.0 — sécurité et qualité (18/11/2026)
+
+Validé sur Windows : 18/18 contrôles et 52/52 de non-régression ; npm audit 0 vulnérabilité, pip-audit 0 ; Ruff, mypy, ESLint, Prettier, TypeScript sans anomalie ; pytest 104, Vitest 21, Playwright + axe 10/10. Détails : [`VALIDATION-PHASE2.0.md`](VALIDATION-PHASE2.0.md), [`SECURITY-AUDIT-PHASE2.0.md`](SECURITY-AUDIT-PHASE2.0.md). Branche non poussée ; lot 2.1 proposé : [`PHASE2.1-PLAN.md`](PHASE2.1-PLAN.md).
+
 ## Prochaine étape
 
 Attendre votre validation explicite avant de commencer la Phase 2 (plan : [`07-plan-phase-2.md`](07-plan-phase-2.md)).

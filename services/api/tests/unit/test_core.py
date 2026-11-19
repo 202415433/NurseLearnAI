@@ -1,4 +1,5 @@
 """Tests unitaires (sans base de données) des briques transverses de l'API."""
+
 from __future__ import annotations
 
 import json
@@ -17,10 +18,20 @@ from app.core.logging import JsonFormatter  # noqa: E402
 from app.core.pagination import PageParams  # noqa: E402
 
 
-@pytest.mark.parametrize("header,expected", [
-    (None, "fr"), ("", "fr"), ("en", "en"), ("en-CA,en;q=0.9", "en"), ("fr-CA,fr;q=0.9,en;q=0.8", "fr"),
-    ("de-DE,en;q=0.5", "en"), ("de-DE", "fr"), ("en;q=0.2,fr;q=0.9", "fr"), ("en;q=abc", "fr"),
-])
+@pytest.mark.parametrize(
+    "header,expected",
+    [
+        (None, "fr"),
+        ("", "fr"),
+        ("en", "en"),
+        ("en-CA,en;q=0.9", "en"),
+        ("fr-CA,fr;q=0.9,en;q=0.8", "fr"),
+        ("de-DE,en;q=0.5", "en"),
+        ("de-DE", "fr"),
+        ("en;q=0.2,fr;q=0.9", "fr"),
+        ("en;q=abc", "fr"),
+    ],
+)
 def test_negotiate_locale(header, expected):
     assert negotiate_locale(header, ["fr", "en"], "fr") == expected
 
@@ -46,8 +57,9 @@ def test_database_url_drivers():
 
 
 def test_json_logs_contain_no_message_args_and_are_valid_json():
-    record = logging.makeLogRecord({"name": "t", "levelname": "INFO", "msg": "requete",
-                                    "path": "/api/v1/countries", "status": 200})
+    record = logging.makeLogRecord(
+        {"name": "t", "levelname": "INFO", "msg": "requete", "path": "/api/v1/countries", "status": 200}
+    )
     payload = json.loads(JsonFormatter().format(record))
     assert payload["msg"] == "requete" and payload["path"] == "/api/v1/countries" and payload["status"] == 200
     assert "args" not in payload

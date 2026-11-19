@@ -5,6 +5,7 @@ qui sont la source de vérité testée sur PostgreSQL.
 Phase 2 : target_metadata pointera vers les modèles SQLAlchemy (app.db.base.Base.metadata)
 et un test vérifiera que modèles et schéma ne divergent pas (alembic check).
 """
+
 from __future__ import annotations
 
 import os
@@ -38,8 +39,7 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     engine = create_engine(_url(), poolclass=pool.NullPool)
     with engine.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata,
-                          transaction_per_migration=True)
+        context.configure(connection=connection, target_metadata=target_metadata, transaction_per_migration=True)
         with context.begin_transaction():
             context.run_migrations()
 

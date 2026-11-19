@@ -6,6 +6,7 @@ import { afterEach, vi } from "vitest";
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children?: ReactNode; [key: string]: unknown }) =>
     createElement("a", { href, ...rest }, children),
+  useLinkStatus: () => ({ pending: false }),
 }));
 
 afterEach(() => cleanup());

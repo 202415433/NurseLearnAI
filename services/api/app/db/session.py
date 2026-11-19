@@ -1,4 +1,5 @@
 """Moteur SQLAlchemy asynchrone, créé au démarrage de l'application."""
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator

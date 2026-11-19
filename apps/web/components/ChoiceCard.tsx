@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { LinkPending } from "./LinkPending";
+
 // Carte de choix entièrement cliquable (cible ≥ 44 px, focus visible hérité du lien).
 export function ChoiceCard({
   href,
@@ -8,12 +10,14 @@ export function ChoiceCard({
   description,
   children,
   testId,
+  pendingLabel = "Chargement…",
 }: {
   href: string;
   title: string;
   description?: string;
   children?: ReactNode;
   testId?: string;
+  pendingLabel?: string;
 }) {
   return (
     <li className="list-none">
@@ -25,6 +29,7 @@ export function ChoiceCard({
         <span className="block text-lg font-semibold text-fg">{title}</span>
         {description ? <span className="mt-1 block text-fg-muted">{description}</span> : null}
         {children ? <span className="mt-3 block">{children}</span> : null}
+        <LinkPending label={pendingLabel} />
       </Link>
     </li>
   );

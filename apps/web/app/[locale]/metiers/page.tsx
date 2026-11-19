@@ -8,7 +8,13 @@ import { localeFrom, resolvePath, single, type SearchParams } from "@/lib/route"
 
 export const dynamic = "force-dynamic";
 
-export default async function ProfessionsPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: SearchParams }) {
+export default async function ProfessionsPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string }>;
+  searchParams: SearchParams;
+}) {
   const locale = await localeFrom(params);
   const t = getDictionary(locale);
   const query = await searchParams;
@@ -41,6 +47,7 @@ export default async function ProfessionsPage({ params, searchParams }: { params
         <ul className="mt-6 grid gap-4" data-testid="profession-list">
           {professions.map((p) => (
             <ChoiceCard
+              pendingLabel={t.states.loading}
               key={p.code}
               testId={`profession-${p.code}`}
               href={`/${locale}/specialites?j=${encodeURIComponent(jurisdiction.code)}&p=${encodeURIComponent(p.code)}`}
