@@ -13,6 +13,16 @@ fresh_copy() {
   rm -rf "$1" && mkdir -p "$1" && cp "$SRC/package.json" "$1/" && cp "$SRC/package-lock.json" "$1/" 2>/dev/null
   return 0
 }
+# Toutes les copies de postcss du lockfile doivent être corrigées (≥ 8.5.23, avis GHSA-fxqj-rqcc-2cmp).
+check_postcss() {
+  node -e '
+    const d=JSON.parse(require("fs").readFileSync("/tmp/web/package-lock.json","utf8"));
+    const bad=Object.entries(d.packages).filter(([k,v])=>/node_modules\/postcss$/.test(k)&&v.version)
+      .filter(([k,v])=>{const [a,b,c]=v.version.split(".").map(Number);return a<8||(a===8&&(b<5||(b===5&&c<23)));});
+    if(bad.length){console.log("postcss non corrigé : "+bad.map(([k,v])=>k+"@"+v.version).join(", "));process.exit(1);}
+    console.log("postcss : toutes les copies ≥ 8.5.23");' > /tmp/postcss.out 2>&1 || { cat /tmp/postcss.out; return 1; }
+  cat /tmp/postcss.out
+}
 log_tail() { tail -n 25 "$(ls -t /root/.npm/_logs/*-debug-0.log | head -1)" 2>/dev/null; }
 
 # Diagnostic du 18/11 : l'anomalie npm 10 « reading 'edgesOut' » (build-ideal-tree #loadPeerSet) apparaît
@@ -24,8 +34,14 @@ log_tail() { tail -n 25 "$(ls -t /root/.npm/_logs/*-debug-0.log | head -1)" 2>/d
 attempt() { # $1 = libellé ; $2 = commande npm ; $3 = "frais" pour repartir sans lockfile
   fresh_copy /tmp/web
   [ "${3:-}" = "frais" ] && rm -f /tmp/web/package-lock.json
+  # npm n'applique pas un « override » à une entrée déjà verrouillée : on retire du lockfile copié
+  # le postcss figé par Next.js pour qu'il soit résolu à nouveau selon l'override.
+  [ -f /tmp/web/package-lock.json ] && node -e '
+    const fs=require("fs");const f="/tmp/web/package-lock.json";const d=JSON.parse(fs.readFileSync(f,"utf8"));
+    delete d.packages["node_modules/next/node_modules/postcss"];fs.writeFileSync(f,JSON.stringify(d,null,2)+"\n");'
   if (cd /tmp/web && $2 install --package-lock-only $FLAGS > /tmp/npm.out 2>&1) \
-     && (cd /tmp/web && npm ci --dry-run $FLAGS > /dev/null 2>&1); then
+     && (cd /tmp/web && npm ci --dry-run $FLAGS > /dev/null 2>&1) \
+     && check_postcss; then
     cp /tmp/web/package-lock.json "$SRC/package-lock.json"
     echo "lock-ok ($1)"
     exit 0

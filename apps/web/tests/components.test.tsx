@@ -80,7 +80,7 @@ describe("EmptyState et Notice", () => {
     render(
       <>
         <EmptyState title="Aucun programme" testId="empty">
-          Rien n'est publié.
+          {"Rien n'est publié."}
         </EmptyState>
         <Notice tone="danger">Alerte</Notice>
       </>,
