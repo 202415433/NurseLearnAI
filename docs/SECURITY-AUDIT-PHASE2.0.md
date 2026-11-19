@@ -27,12 +27,14 @@ Résultat : **5 vulnérabilités — 2 critiques, 1 élevée, 2 modérées** (pr
 | Problème | Correctif proposé par `npm audit` | Correctif retenu | Pourquoi |
 |---|---|---|---|
 | `vitest` / `tinypool` / `@vitest/mocker` | `vitest@5.1.1` (2 versions majeures) | **`vitest@^4.1.12`** (1 version majeure) | Plus petite version corrigeant tous les avis (`@vitest/mocker` ≥ 4.1.12, plus de `tinypool` vulnérable) ; compatible avec notre configuration (`esbuild.jsx`, environnements par fichier, `vi.mock`). |
-| `postcss` figé à 8.4.31 par Next.js | `next@16.4.6` (version majeure, migration App Router/cache) | **`overrides: { "postcss": "^8.5.33" }`** | Même version majeure de PostCSS (8.x, API stable), déjà utilisée par Tailwind dans le projet ; évite une migration Next.js 16 non planifiée. |
+| `postcss` figé à 8.4.31 par Next.js | `next@16.4.6` (version majeure, migration App Router/cache) | **`overrides: { "next": { "postcss": "^8.5.33" } }`** (limité à l'arbre de Next.js) | Même version majeure de PostCSS (8.x, API stable), déjà utilisée par Tailwind dans le projet ; évite une migration Next.js 16 non planifiée. npm n'appliquant pas un override à une entrée déjà verrouillée, `scripts/npm-lock.sh` retire cette entrée avant résolution puis vérifie que toutes les copies de postcss sont ≥ 8.5.23. |
 | Version minimale de Next.js | — | **`next@^15.5.29`**, `eslint-config-next@^15.5.29` | Empêche un futur lockfile de redescendre sous la dernière version corrigée de la branche 15.5 (versions 15.5.18, .21, .24, .28 et .29 : correctifs de sécurité de 2026). |
 
 Les dépendances nécessaires n'ont pas été retirées et l'audit n'a pas été désactivé : un job CI `dependency-audit` échoue désormais pour toute vulnérabilité **élevée ou critique** (`npm audit --audit-level=high`) et `pip-audit --strict` contrôle l'API.
 
-**Vérification** : `scripts/validate-phase2.0.ps1` régénère le lockfile, relance `npm audit` (rapports JSON horodatés) et toute la suite de tests ; résultats dans [`VALIDATION-PHASE2.0.md`](VALIDATION-PHASE2.0.md).
+**Vérification (exécution n° 5, 18/11/2026, 21 h 41)** : `npm audit --package-lock-only` → **found 0 vulnerabilities** (515 dépendances : critique 0, élevée 0, modérée 0, faible 0) ; versions résolues : `next` 15.5.29, `postcss` 8.5.33 (copie unique, plus de copie imbriquée sous Next.js), `vitest` 4.1.12, `vite` 8.3.8, plus de `tinypool`. Non-régression complète réussie : [`VALIDATION-PHASE2.0.md`](VALIDATION-PHASE2.0.md).
+
+**Note sur l'outillage** : npm 10 (fourni avec Node 22) échoue sur la mise à niveau vitest 3 → 4 (« Cannot read properties of null (reading 'edgesOut') », dans `#loadPeerSet`). Le lockfile a été produit par npm 11 puis accepté par `npm ci` de npm 10 (image Docker et CI).
 
 ### Risque restant
 
@@ -41,7 +43,7 @@ Les dépendances nécessaires n'ont pas été retirées et l'audit n'a pas été
 
 ## 2. Dépendances Python (`services/api`)
 
-`pip-audit --strict --skip-editable` est exécuté sur l'environnement réel de l'API (dépendances et outils de développement) par le script de validation et par la CI. Versions installées constatées en CI : FastAPI 0.165.0, Starlette 1.10.0, Pydantic 2.14.3, SQLAlchemy 2.1.9, asyncpg 0.32.0, psycopg 3.3.9, Alembic 1.20.1, redis 6.4.0, uvicorn 0.54.0.
+`pip-audit --strict --disable-pip --no-deps -r <pip freeze --exclude-editable>` est exécuté sur l'environnement réel de l'API (dépendances et outils de développement) par le script de validation et par la CI. Résultat du 18/11/2026 : **No known vulnerabilities found**. Versions installées constatées en CI : FastAPI 0.165.0, Starlette 1.10.0, Pydantic 2.14.3, SQLAlchemy 2.1.9, asyncpg 0.32.0, psycopg 3.3.9, Alembic 1.20.1, redis 6.4.0, uvicorn 0.54.0.
 
 ## 3. Sécurité HTTP
 
