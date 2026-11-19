@@ -70,6 +70,12 @@ Historique préservé (fusions sans réécriture ni écrasement), aucune protect
 
 Validé sur Windows : 18/18 contrôles et 52/52 de non-régression ; npm audit 0 vulnérabilité, pip-audit 0 ; Ruff, mypy, ESLint, Prettier, TypeScript sans anomalie ; pytest 104, Vitest 21, Playwright + axe 10/10. Détails : [`VALIDATION-PHASE2.0.md`](VALIDATION-PHASE2.0.md), [`SECURITY-AUDIT-PHASE2.0.md`](SECURITY-AUDIT-PHASE2.0.md). Branche non poussée ; lot 2.1 proposé : [`PHASE2.1-PLAN.md`](PHASE2.1-PLAN.md).
 
+## Intégration du lot 2.0 et décisions pour le lot 2.1 (18/11/2026)
+
+- Branche `phase-2.0-security-quality` poussée ; CI 7/7 (run 44450653365) ; PR #4 (CI 7/7, run 44451591059) fusionnée par commit de fusion `8631c0f` ; CI de `main` 7/7 (run 44452657681).
+- Décisions d'architecture enregistrées : [ADR-0007](adr/0007-identite-acces-sessions.md) (rôles, invitations, sessions, mineurs) et [ADR-0008](adr/0008-residence-des-donnees.md) (résidence des données — non garantie tant que l'infrastructure n'est pas configurée et vérifiée).
+- Plan détaillé : [`PHASE2.1-PLAN.md`](PHASE2.1-PLAN.md). Développement en attente d'autorisation explicite.
+
 ## Prochaine étape
 
 Attendre votre validation explicite avant de commencer la Phase 2 (plan : [`07-plan-phase-2.md`](07-plan-phase-2.md)).
