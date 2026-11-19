@@ -1,6 +1,14 @@
 import type { ReactNode } from "react";
 
-export function Notice({ tone = "info", title, children }: { tone?: "info" | "warning" | "danger"; title?: string; children: ReactNode }) {
+export function Notice({
+  tone = "info",
+  title,
+  children,
+}: {
+  tone?: "info" | "warning" | "danger";
+  title?: string;
+  children: ReactNode;
+}) {
   const styles = {
     info: "border-primary bg-primary-soft",
     warning: "border-warning bg-warning-soft",

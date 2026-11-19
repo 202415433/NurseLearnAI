@@ -32,7 +32,10 @@ describe("AvailabilityBadge", () => {
 describe("Breadcrumbs", () => {
   it("marque la page courante et relie les étapes précédentes", () => {
     render(
-      <Breadcrumbs label="Fil d'Ariane" items={[{ label: "Accueil", href: "/fr" }, { label: "Pays", href: "/fr/pays" }, { label: "Québec" }]} />,
+      <Breadcrumbs
+        label="Fil d'Ariane"
+        items={[{ label: "Accueil", href: "/fr" }, { label: "Pays", href: "/fr/pays" }, { label: "Québec" }]}
+      />,
     );
     expect(screen.getByRole("navigation", { name: "Fil d'Ariane" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Pays" }).getAttribute("href")).toBe("/fr/pays");
@@ -58,7 +61,9 @@ describe("Pagination", () => {
   const labels = { label: "Pagination", previous: "Précédent", next: "Suivant", pageOf: t.programs.pageOf };
 
   it("n'apparaît pas pour une seule page", () => {
-    const { container } = render(<Pagination total={5} limit={20} offset={0} buildHref={(o) => `?o=${o}`} labels={labels} />);
+    const { container } = render(
+      <Pagination total={5} limit={20} offset={0} buildHref={(o) => `?o=${o}`} labels={labels} />,
+    );
     expect(container.innerHTML).toBe("");
   });
 

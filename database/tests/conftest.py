@@ -5,6 +5,7 @@ Variables d'environnement :
   PGPASSWORD si nécessaire.
 Chaque session de test crée une base `nl_schema_test_<pid>` et la supprime à la fin.
 """
+
 from __future__ import annotations
 
 import os
@@ -28,15 +29,21 @@ class Db:
         self.name = name
         self.base = [
             "psql",
-            "-h", os.environ.get("NL_TEST_PGHOST", "localhost"),
-            "-p", os.environ.get("NL_TEST_PGPORT", "5432"),
-            "-U", os.environ.get("NL_TEST_PGUSER", "postgres"),
-            "-v", "ON_ERROR_STOP=1", "-X", "-q", "-At",
+            "-h",
+            os.environ.get("NL_TEST_PGHOST", "localhost"),
+            "-p",
+            os.environ.get("NL_TEST_PGPORT", "5432"),
+            "-U",
+            os.environ.get("NL_TEST_PGUSER", "postgres"),
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-X",
+            "-q",
+            "-At",
         ]
 
     def _run(self, args: list[str], db: str | None = None) -> str:
-        proc = subprocess.run(self.base + ["-d", db or self.name] + args,
-                              capture_output=True, text=True)
+        proc = subprocess.run(self.base + ["-d", db or self.name] + args, capture_output=True, text=True)
         if proc.returncode != 0:
             raise SqlError(proc.stderr.strip())
         return proc.stdout.strip()
@@ -67,7 +74,7 @@ def db():
     d.file(SCHEMA / "0001_core.sql")
     if d.sql("SELECT count(*) FROM pg_available_extensions WHERE name = 'vector'") == "1":
         d.file(SCHEMA / "0002_pgvector.sql")
-    d.file(SCHEMA / "0003_business_rules.sql")   # indépendante des objets de 0002
+    d.file(SCHEMA / "0003_business_rules.sql")  # indépendante des objets de 0002
     for seed in sorted(SEEDS.glob("*.sql")):
         d.file(seed)
     yield d
@@ -83,19 +90,23 @@ def make_user(db):
     def _make(email: str | None = None) -> str:
         uid = new_id()
         email = email or f"{uid[:8]}@example.test"
-        db.sql(f"INSERT INTO users (id, email, status, email_verified_at) "
-               f"VALUES ('{uid}', '{email}', 'active', now())")
+        db.sql(f"INSERT INTO users (id, email, status, email_verified_at) VALUES ('{uid}', '{email}', 'active', now())")
         return uid
+
     return _make
 
 
 @pytest.fixture
 def grant_role(db):
     """Attribue un rôle (global si org est None) à un utilisateur."""
+
     def _grant(user_id: str, role_code: str, org: str | None = None) -> None:
         org_sql = f"'{org}'" if org else "NULL"
-        db.sql(f"INSERT INTO user_roles (user_id, role_id, organization_id) "
-               f"SELECT '{user_id}', id, {org_sql} FROM roles WHERE code = '{role_code}'")
+        db.sql(
+            f"INSERT INTO user_roles (user_id, role_id, organization_id) "
+            f"SELECT '{user_id}', id, {org_sql} FROM roles WHERE code = '{role_code}'"
+        )
+
     return _grant
 
 
@@ -105,6 +116,7 @@ def make_reviewer(make_user, grant_role):
         uid = make_user()
         grant_role(uid, "medical_reviewer")
         return uid
+
     return _make
 
 
@@ -112,8 +124,11 @@ def make_reviewer(make_user, grant_role):
 def make_org(db):
     def _make() -> str:
         oid = new_id()
-        db.sql(f"INSERT INTO organizations (id, slug, name, kind) VALUES ('{oid}', 'org-{oid[:8]}', 'Institut {oid[:4]}', 'school')")
+        db.sql(
+            f"INSERT INTO organizations (id, slug, name, kind) VALUES ('{oid}', 'org-{oid[:8]}', 'Institut {oid[:4]}', 'school')"
+        )
         return oid
+
     return _make
 
 
@@ -126,9 +141,13 @@ def specialty_id(db):
 def make_lesson(db, specialty_id):
     def _make() -> str:
         mid, lid = new_id(), new_id()
-        db.sql(f"INSERT INTO modules (id, code, specialty_id, level, title_i18n) VALUES "
-               f"('{mid}', 'm-{mid[:8]}', '{specialty_id}', 'beginner', '{{\"fr\":\"Hygiène des mains\"}}')")
-        db.sql(f"INSERT INTO lessons (id, module_id, code, position, kind) VALUES "
-               f"('{lid}', '{mid}', 'l1', 0, 'theory')")
+        db.sql(
+            f"INSERT INTO modules (id, code, specialty_id, level, title_i18n) VALUES "
+            f"('{mid}', 'm-{mid[:8]}', '{specialty_id}', 'beginner', '{{\"fr\":\"Hygiène des mains\"}}')"
+        )
+        db.sql(
+            f"INSERT INTO lessons (id, module_id, code, position, kind) VALUES ('{lid}', '{mid}', 'l1', 0, 'theory')"
+        )
         return lid
+
     return _make

@@ -1,0 +1,24 @@
+# Ruff — configuration unique du dépôt (API, migrations, tests de base de données).
+# Règles introduites progressivement en Phase 2.0.
+target-version = "py312"
+line-length = 120
+# Révisions Alembic historiques : jamais modifiées, même pour le formatage.
+extend-exclude = ["**/node_modules", "**/build", "apps", "packages", "services/api/alembic/versions"]
+
+[lint]
+# Erreurs, style, imports, bugs probables, modernisation, sécurité (bandit), asynchrone, simplifications.
+select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "SIM"]
+
+[lint.per-file-ignores]
+# Tests : assert attendu ; psql lancé sans shell avec des arguments fixes ;
+# SQL de test construit à partir de valeurs générées par les tests eux-mêmes.
+# Longues lignes : chaînes SQL de test, laissées entières pour rester lisibles.
+"**/tests/**" = ["S101", "S603", "S607", "S608", "E501"]
+# Modèle Pydantic générique : on garde Generic[T], forme documentée par Pydantic.
+"services/api/app/core/pagination.py" = ["UP046"]
+
+[lint.isort]
+known-first-party = ["app"]
+
+[format]
+quote-style = "double"

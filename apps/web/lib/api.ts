@@ -95,6 +95,21 @@ export function isValid(kind: keyof typeof patterns, value: string | undefined):
   return typeof value === "string" && patterns[kind].test(value);
 }
 
+// Adresse du visiteur transmise à l'API pour une limitation de débit par visiteur
+// (l'API ne la lit que si ce serveur fait partie de ses mandataires approuvés : TRUSTED_PROXIES).
+const IP_PATTERN = /^[0-9A-Fa-f:.]{2,45}$/;
+
+async function visitorAddress(): Promise<string | undefined> {
+  try {
+    const { headers } = await import("next/headers");
+    const h = await headers();
+    const candidate = h.get("x-forwarded-for")?.split(",").at(-1)?.trim() || h.get("x-real-ip")?.trim();
+    return candidate && IP_PATTERN.test(candidate) ? candidate : undefined;
+  } catch {
+    return undefined; // hors requête (tests, construction) : rien à transmettre
+  }
+}
+
 async function get<T>(path: string, params: Record<string, string | number | undefined>, locale: Locale): Promise<T> {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -103,8 +118,13 @@ async function get<T>(path: string, params: Record<string, string | number | und
   const url = `${BASE_URL}${path}${query.size ? `?${query.toString()}` : ""}`;
   let response: Response;
   try {
+    const visitor = await visitorAddress();
     response = await fetch(url, {
-      headers: { "Accept-Language": locale, Accept: "application/json" },
+      headers: {
+        "Accept-Language": locale,
+        Accept: "application/json",
+        ...(visitor ? { "X-Forwarded-For": visitor } : {}),
+      },
       cache: "no-store",
       signal: AbortSignal.timeout(5000),
     });

@@ -5,6 +5,7 @@ projection en lecture. Le test `test_models_match_schema` vérifie que chaque
 colonne déclarée ici existe en base avec un type et une nullabilité compatibles.
 Les autres tables seront modélisées en Phase 2.
 """
+
 from __future__ import annotations
 
 import uuid

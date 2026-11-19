@@ -24,7 +24,10 @@ export default async function ProgramPage({ params }: { params: Promise<{ locale
         items={[
           { label: t.crumbs.home, href: `/${locale}` },
           { label: t.crumbs.countries, href: `/${locale}/pays` },
-          { label: program.profession_title, href: `/${locale}/metiers?j=${encodeURIComponent(program.jurisdiction_code)}` },
+          {
+            label: program.profession_title,
+            href: `/${locale}/metiers?j=${encodeURIComponent(program.jurisdiction_code)}`,
+          },
           { label: t.crumbs.programs, href: list },
           { label: program.title },
         ]}
@@ -68,11 +71,16 @@ export default async function ProgramPage({ params }: { params: Promise<{ locale
                   <h4 className="mt-4 font-semibold">{t.program.lessons}</h4>
                   <ol className="mt-2 space-y-2" data-testid="lesson-list">
                     {m.lessons.map((l) => (
-                      <li key={l.code} className="flex flex-wrap items-baseline justify-between gap-2 border-t border-border pt-2">
+                      <li
+                        key={l.code}
+                        className="flex flex-wrap items-baseline justify-between gap-2 border-t border-border pt-2"
+                      >
                         <span lang={l.locale !== locale ? l.locale : undefined}>
                           {l.position}. {l.title}
                           {l.jurisdiction_specific ? (
-                            <span className="ml-2 rounded-full bg-accent-soft px-2 py-0.5 text-xs">{t.program.local}</span>
+                            <span className="ml-2 rounded-full bg-accent-soft px-2 py-0.5 text-xs">
+                              {t.program.local}
+                            </span>
                           ) : null}
                         </span>
                         <span className="text-sm text-fg-muted">{t.program.minutes(l.estimated_minutes)}</span>

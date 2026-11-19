@@ -4,6 +4,7 @@ Le middleware n'enregistre ni corps de requête, ni chaîne de requête, ni
 adresse IP, ni en-tête d'authentification : uniquement méthode, chemin,
 statut, durée et identifiant de requête.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,7 +23,7 @@ _RESERVED = set(vars(logging.makeLogRecord({})))
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
-        payload = {
+        payload: dict[str, object] = {
             "ts": datetime.fromtimestamp(record.created, UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
@@ -41,7 +42,7 @@ def configure_logging(level: str = "INFO") -> None:
     root.handlers[:] = [handler]
     root.setLevel(level.upper())
     for noisy in ("uvicorn.access",):
-        logging.getLogger(noisy).disabled = True   # remplacé par notre journal d'accès
+        logging.getLogger(noisy).disabled = True  # remplacé par notre journal d'accès
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
@@ -56,7 +57,14 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             status = response.status_code
         finally:
             logging.getLogger("nurselearn.access").info(
-                "requete", extra={"request_id": request_id, "method": request.method, "path": request.url.path,
-                                  "status": status, "duration_ms": round((time.perf_counter() - start) * 1000, 1)})
+                "requete",
+                extra={
+                    "request_id": request_id,
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status": status,
+                    "duration_ms": round((time.perf_counter() - start) * 1000, 1),
+                },
+            )
         response.headers["X-Request-ID"] = request_id
         return response

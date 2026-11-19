@@ -117,15 +117,21 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
+      - name: Qualité Python (Ruff lint + format, mypy)
+        run: |
+          ruff check ../..
+          ruff format --check ../..
+          mypy
       - run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - run: psql -h localhost -U postgres -c "CREATE DATABASE nl_api"
       - name: Migrations et données de référence
         run: alembic upgrade head && python -m app.seed && python -m app.seed
       - name: Tests de l'API (intégration PostgreSQL + unitaires)
-        run: python -m pytest -q -rs tests/api tests/unit
+        # Avertissement httpx de Starlette traité comme une erreur : il ne doit pas réapparaître.
+        run: python -m pytest -q -rs -W "error:Using .httpx. with .starlette.testclient.:DeprecationWarning" tests/api tests/unit
       - name: L'API démarre avec uvicorn et répond
         run: |
-          uvicorn app.main:create_app --factory --port 8000 &
+          uvicorn app.main:create_app --factory --port 8000 --no-server-header &
           for i in $(seq 1 30); do curl -fsS localhost:8000/ready && break; sleep 1; done
           curl -fsS "localhost:8000/api/v1/professions?jurisdiction=CA-QC" | grep -q '"code":"pab"'
           curl -fsS "localhost:8000/api/v1/programs?jurisdiction=CA-QC&profession=pab" | grep -q '"total":0'
@@ -169,7 +175,7 @@ jobs:
           PGPASSWORD: ci
       - name: Installation et build
         working-directory: apps/web
-        run: npm install && npm run typecheck && npm test && npm run build
+        run: npm install && npm run typecheck && npm run lint && npm run format:check && npm test && npm run build
       - name: Navigateur Playwright
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
@@ -186,6 +192,28 @@ jobs:
         with:
           name: playwright-report
           path: apps/web/playwright-report
+
+  dependency-audit:
+    name: Audit des dépendances (npm, pip) — aucune vulnérabilité élevée ou critique
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: npm audit (production et développement)
+        working-directory: apps/web
+        run: npm audit --package-lock-only --audit-level=high
+      - name: pip-audit (dépendances de l'API)
+        working-directory: services/api
+        # Environnement réel de l'API (dépendances + outils de développement) audité tel qu'installé.
+        run: |
+          pip install -e ".[dev]" pip-audit
+          pip-audit --strict --skip-editable
 
   design-tokens:
     name: Design system (contrastes WCAG)

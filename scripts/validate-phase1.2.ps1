@@ -1,4 +1,4 @@
-﻿# =============================================================================
+# =============================================================================
 # NurseLearn AI — Validation de la Phase 1.2 (API FastAPI + parcours web)
 # Usage (PowerShell, à la racine du dépôt C:\NurseLearnAI-git) :
 #   powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase1.2.ps1
@@ -76,7 +76,9 @@ function Psql([string]$db, [string]$sql) { docker compose exec -T postgres psql 
 
 Log "NurseLearn AI — validation Phase 1.2 — $(Get-Date -Format o)"
 Log "Machine : $env:COMPUTERNAME — dossier $root — Git : $(git branch --show-current 2>$null) @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_phase_1_2" ((git branch --show-current 2>$null) -eq "phase-1.2") "$(git branch --show-current 2>$null)"
+# Branche phase-1.2 ou ultérieure (le script sert aussi de non-régression aux phases suivantes).
+$branch = git branch --show-current 2>$null
+Result "branche_phase_1_2_ou_suivante" ($branch -eq "phase-1.2" -or $branch -eq "main" -or $branch -like "phase-2*") "$branch"
 
 # -----------------------------------------------------------------------------
 # 1. Démarrage avec la commande cible

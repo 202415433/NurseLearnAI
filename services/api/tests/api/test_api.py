@@ -1,4 +1,5 @@
 """Tests d'intégration de l'API (phase 1.2) sur PostgreSQL et Redis réels."""
+
 from __future__ import annotations
 
 import os
@@ -45,8 +46,16 @@ def test_security_headers_and_request_id_propagation(client):
 
 def test_openapi_lists_phase_1_2_routes_read_only(client):
     paths = client.get("/openapi.json").json()["paths"]
-    for p in ("/api/v1/countries", "/api/v1/jurisdictions", "/api/v1/professions", "/api/v1/specialties",
-              "/api/v1/programs", "/api/v1/programs/{program_id}", "/health", "/ready"):
+    for p in (
+        "/api/v1/countries",
+        "/api/v1/jurisdictions",
+        "/api/v1/professions",
+        "/api/v1/specialties",
+        "/api/v1/programs",
+        "/api/v1/programs/{program_id}",
+        "/health",
+        "/ready",
+    ):
         assert p in paths, p
     assert all(method == "get" for item in paths.values() for method in item), "API en lecture seule"
     assert client.post("/api/v1/programs").status_code == 405
@@ -70,11 +79,21 @@ def test_countries(client):
 
 def test_jurisdictions_filtered_by_country_and_scope(client):
     assert set(codes(client.get("/api/v1/jurisdictions", params={"country": "CA"}).json())) == {
-        "CA", "CA-QC", "CA-ON", "CA-BC", "CA-AB"}
+        "CA",
+        "CA-QC",
+        "CA-ON",
+        "CA-BC",
+        "CA-AB",
+    }
     assert codes(client.get("/api/v1/jurisdictions", params={"country": "fr"}).json()) == ["FR"]
     assert codes(client.get("/api/v1/jurisdictions", params={"country": "SN"}).json()) == ["SN"]
-    assert set(codes(client.get("/api/v1/jurisdictions", params={"scope": "framework"}).json())) == {"FRANCOPHONIE", "INTL"}
-    qc = next(j for j in client.get("/api/v1/jurisdictions", params={"country": "CA"}).json()["items"] if j["code"] == "CA-QC")
+    assert set(codes(client.get("/api/v1/jurisdictions", params={"scope": "framework"}).json())) == {
+        "FRANCOPHONIE",
+        "INTL",
+    }
+    qc = next(
+        j for j in client.get("/api/v1/jurisdictions", params={"country": "CA"}).json()["items"] if j["code"] == "CA-QC"
+    )
     assert qc["name"] == "Québec" and qc["parent_code"] == "CA"
 
 
@@ -89,18 +108,21 @@ def test_pagination(client):
     assert codes(first) + codes(rest) == codes(full)
 
 
-@pytest.mark.parametrize("path,params", [
-    ("/api/v1/jurisdictions", {"country": "CAN"}),
-    ("/api/v1/jurisdictions", {"scope": "galaxy"}),
-    ("/api/v1/jurisdictions", {"limit": 0}),
-    ("/api/v1/jurisdictions", {"limit": 101}),
-    ("/api/v1/jurisdictions", {"offset": -1}),
-    ("/api/v1/professions", {"jurisdiction": "QC;DROP"}),
-    ("/api/v1/professions", {"category": "doctor"}),
-    ("/api/v1/specialties", {"group": "Z"}),
-    ("/api/v1/programs", {"level": "expert"}),
-    ("/api/v1/programs", {"specialty": "../etc"}),
-])
+@pytest.mark.parametrize(
+    "path,params",
+    [
+        ("/api/v1/jurisdictions", {"country": "CAN"}),
+        ("/api/v1/jurisdictions", {"scope": "galaxy"}),
+        ("/api/v1/jurisdictions", {"limit": 0}),
+        ("/api/v1/jurisdictions", {"limit": 101}),
+        ("/api/v1/jurisdictions", {"offset": -1}),
+        ("/api/v1/professions", {"jurisdiction": "QC;DROP"}),
+        ("/api/v1/professions", {"category": "doctor"}),
+        ("/api/v1/specialties", {"group": "Z"}),
+        ("/api/v1/programs", {"level": "expert"}),
+        ("/api/v1/programs", {"specialty": "../etc"}),
+    ],
+)
 def test_strict_input_validation(client, path, params):
     r = client.get(path, params=params)
     assert r.status_code == 422, (path, params, r.text)
@@ -117,16 +139,21 @@ def test_professions_are_scoped_to_their_jurisdiction(client):
     assert codes(client.get("/api/v1/professions", params={"jurisdiction": "CA-ON"}).json()) == ["psw", "rpn", "rn"]
     fr = codes(client.get("/api/v1/professions", params={"jurisdiction": "FR"}).json())
     assert fr == ["aide_soignant", "infirmier"] and "pab" not in fr, "aucune équivalence implicite"
-    assert codes(client.get("/api/v1/professions", params={"jurisdiction": "SN"}).json()) == ["aide_infirmier", "infirmier_etat"]
+    assert codes(client.get("/api/v1/professions", params={"jurisdiction": "SN"}).json()) == [
+        "aide_infirmier",
+        "infirmier_etat",
+    ]
     assert client.get("/api/v1/professions", params={"jurisdiction": "XX-ZZ"}).json()["total"] == 0
-    regulated = client.get("/api/v1/professions", params={"jurisdiction": "CA-QC", "category": "registered_nurse"}).json()
+    regulated = client.get(
+        "/api/v1/professions", params={"jurisdiction": "CA-QC", "category": "registered_nurse"}
+    ).json()
     assert codes(regulated) == ["infirmiere"] and regulated["items"][0]["is_regulated"] is True
 
 
 def test_availability_exposes_counts_only(client):
     pab = client.get("/api/v1/professions", params={"jurisdiction": "CA-QC"}).json()["items"][0]
     assert pab["code"] == "pab"
-    assert pab["availability"] == {"published": 0, "in_preparation": 1}   # pilote en brouillon
+    assert pab["availability"] == {"published": 0, "in_preparation": 1}  # pilote en brouillon
     assert "Hygiène" not in str(pab), "aucun détail de brouillon n'est exposé"
 
 
@@ -167,7 +194,9 @@ def test_published_content_and_jurisdiction_filters(client, published_demo):
     detail = client.get(f"/api/v1/programs/{item['id']}").json()
     assert [m["code"] for m in detail["modules"]] == [published_demo["module"]]
     lessons = detail["modules"][0]["lessons"]
-    assert [lesson["code"] for lesson in lessons] == ["publiee"], "une leçon sans version publiée ne doit pas apparaître"
+    assert [lesson["code"] for lesson in lessons] == ["publiee"], (
+        "une leçon sans version publiée ne doit pas apparaître"
+    )
     # Version propre à la juridiction du programme (Québec) préférée au contenu commun.
     assert lessons[0]["title"] == "Leçon Québec (test)" and lessons[0]["jurisdiction_specific"] is True
     en = client.get(f"/api/v1/programs/{item['id']}", headers={"Accept-Language": "en"}).json()
@@ -175,7 +204,9 @@ def test_published_content_and_jurisdiction_filters(client, published_demo):
 
     pab = client.get("/api/v1/professions", params={"jurisdiction": "CA-QC"}).json()["items"][0]
     assert pab["availability"] == {"published": 1, "in_preparation": 1}
-    specialties = client.get("/api/v1/specialties", params={"jurisdiction": "CA-QC", "profession": "pab"}).json()["items"]
+    specialties = client.get("/api/v1/specialties", params={"jurisdiction": "CA-QC", "profession": "pab"}).json()[
+        "items"
+    ]
     assert specialties[0]["code"] == "care_assistant_core" and specialties[0]["published_programs"] == 1
 
 
@@ -183,7 +214,9 @@ def test_organization_content_is_isolated(client, published_demo, sync_engine):
     every = client.get("/api/v1/programs", params={"limit": 100}).json()
     assert published_demo["private"] not in codes(every)
     with sync_engine.connect() as c:
-        private_id = c.execute(text("SELECT id FROM programs WHERE code = :c"), {"c": published_demo["private"]}).scalar()
+        private_id = c.execute(
+            text("SELECT id FROM programs WHERE code = :c"), {"c": published_demo["private"]}
+        ).scalar()
     assert client.get(f"/api/v1/programs/{private_id}").status_code == 404
     # Les compteurs publics n'incluent pas le programme d'établissement.
     pab = client.get("/api/v1/professions", params={"jurisdiction": "CA-QC"}).json()["items"][0]
@@ -195,10 +228,18 @@ def test_organization_content_is_isolated(client, published_demo, sync_engine):
 # --------------------------------------------------------------------------- sécurité
 def test_no_secrets_or_internals_in_responses(client, settings):
     password = settings.database_url.split("://", 1)[1].split("@", 1)[0].split(":", 1)[-1]
-    bodies = [client.get(p).text for p in ("/ready", "/api/v1/countries", "/api/v1/programs/x",
-                                            f"/api/v1/programs/{uuid.uuid4()}", "/api/v1/jurisdictions?limit=0")]
+    bodies = [
+        client.get(p).text
+        for p in (
+            "/ready",
+            "/api/v1/countries",
+            "/api/v1/programs/x",
+            f"/api/v1/programs/{uuid.uuid4()}",
+            "/api/v1/jurisdictions?limit=0",
+        )
+    ]
     for body in bodies:
-        if len(password) >= 8:   # un mot de passe trop court (CI) produirait des faux positifs
+        if len(password) >= 8:  # un mot de passe trop court (CI) produirait des faux positifs
             assert password not in body
         assert "postgresql" not in body and "Traceback" not in body and "sqlalchemy" not in body.lower()
 
@@ -218,33 +259,106 @@ def test_unexpected_errors_are_generic(settings):
 
 @pytest.mark.skipif(not os.environ.get("REDIS_URL"), reason="Redis requis pour la limitation de débit")
 def test_rate_limit(settings):
-    limited = Settings(cors_origins=settings.cors_origins, rate_limit_per_minute=3)  # type: ignore[call-arg]
+    # Sel propre au test : compteurs indépendants de ceux des autres tests.
+    limited = Settings(cors_origins=settings.cors_origins, rate_limit_per_minute=3, rate_limit_salt=uuid.uuid4().hex)  # type: ignore[call-arg]
     with TestClient(create_app(limited)) as c:
         statuses = [c.get("/api/v1/countries").status_code for _ in range(5)]
         last = c.get("/api/v1/countries")
     assert statuses[:3] == [200, 200, 200] and 429 in statuses
     assert last.status_code == 429 and int(last.headers["Retry-After"]) >= 0
     assert last.headers["content-type"].startswith(PROBLEM)
+    assert last.headers["RateLimit-Limit"] == "3" and last.headers["RateLimit-Remaining"] == "0"
+
+
+def test_rate_limit_per_visitor_behind_trusted_proxy(settings):
+    """Derrière un mandataire approuvé, chaque visiteur a son propre compteur (X-Forwarded-For)."""
+    cfg = Settings(  # type: ignore[call-arg]
+        cors_origins=settings.cors_origins,
+        rate_limit_per_minute=2,
+        rate_limit_salt=uuid.uuid4().hex,
+        trusted_proxies=["testclient"],
+    )
+    with TestClient(create_app(cfg)) as c:
+        a = [c.get("/api/v1/countries", headers={"X-Forwarded-For": "203.0.113.10"}).status_code for _ in range(3)]
+        b = c.get("/api/v1/countries", headers={"X-Forwarded-For": "203.0.113.20"}).status_code
+    assert a == [200, 200, 429]
+    assert b == 200
+
+
+def test_forwarded_for_ignored_from_untrusted_peer(settings):
+    """Sans mandataire approuvé, X-Forwarded-For est ignoré : il ne permet pas de contourner la limite."""
+    cfg = Settings(cors_origins=settings.cors_origins, rate_limit_per_minute=2, rate_limit_salt=uuid.uuid4().hex)  # type: ignore[call-arg]
+    with TestClient(create_app(cfg)) as c:
+        statuses = [
+            c.get("/api/v1/countries", headers={"X-Forwarded-For": f"198.51.100.{i}"}).status_code for i in range(3)
+        ]
+    assert statuses == [200, 200, 429]
+
+
+def test_security_headers_and_csp(client):
+    r = client.get("/api/v1/countries")
+    assert r.headers["X-Frame-Options"] == "DENY"
+    assert r.headers["Content-Security-Policy"] == "default-src 'none'; frame-ancestors 'none'"
+    assert r.headers["Referrer-Policy"] == "no-referrer"
+    # La documentation interactive garde ses ressources (pas de CSP restrictive).
+    assert "Content-Security-Policy" not in client.get("/docs").headers
+
+
+def test_unknown_route_and_method_are_generic(client):
+    r = client.get("/api/v1/inexistant")
+    assert r.status_code == 404 and r.headers["content-type"].startswith(PROBLEM)
+    body = r.text
+    assert "Traceback" not in body and "starlette" not in body.lower()
+    m = client.delete("/api/v1/countries")
+    assert m.status_code == 405 and m.headers["content-type"].startswith(PROBLEM)
+    assert "GET" in m.headers.get("allow", "")
+
+
+def test_docs_hidden_in_production(settings):
+    prod = Settings(app_env="production", cors_origins=["https://nurselearn.example"])  # type: ignore[call-arg]
+    with TestClient(create_app(prod)) as c:
+        assert c.get("/docs").status_code == 404
+        assert c.get("/openapi.json").status_code == 404
+        assert c.get("/health").status_code == 200
+
+
+def test_production_rejects_wildcard_cors():
+    with pytest.raises(ValueError):
+        Settings(app_env="production", cors_origins=["*"], database_url="postgresql://x@y/z")  # type: ignore[call-arg]
 
 
 def test_cors_allows_only_configured_origin(client):
-    ok = client.options("/api/v1/countries", headers={"Origin": "http://localhost:3000",
-                                                       "Access-Control-Request-Method": "GET"})
+    ok = client.options(
+        "/api/v1/countries", headers={"Origin": "http://localhost:3000", "Access-Control-Request-Method": "GET"}
+    )
     assert ok.headers.get("access-control-allow-origin") == "http://localhost:3000"
-    bad = client.options("/api/v1/countries", headers={"Origin": "https://evil.example",
-                                                        "Access-Control-Request-Method": "GET"})
+    bad = client.options(
+        "/api/v1/countries", headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "GET"}
+    )
     assert bad.headers.get("access-control-allow-origin") is None
 
 
 # --------------------------------------------------------------------------- modèles ↔ schéma
-_TYPE_EQUIV = {"TEXT": "text", "STRING": "character", "UUID": "uuid", "JSONB": "jsonb", "BOOLEAN": "boolean",
-               "INTEGER": "integer", "DATE": "date", "DATETIME": "timestamp with time zone"}
+_TYPE_EQUIV = {
+    "TEXT": "text",
+    "STRING": "character",
+    "UUID": "uuid",
+    "JSONB": "jsonb",
+    "BOOLEAN": "boolean",
+    "INTEGER": "integer",
+    "DATE": "date",
+    "DATETIME": "timestamp with time zone",
+}
 
 
 def test_models_match_schema(sync_engine):
     with sync_engine.connect() as c:
-        rows = c.execute(text("SELECT table_name, column_name, data_type, is_nullable "
-                              "FROM information_schema.columns WHERE table_schema = 'public'")).all()
+        rows = c.execute(
+            text(
+                "SELECT table_name, column_name, data_type, is_nullable "
+                "FROM information_schema.columns WHERE table_schema = 'public'"
+            )
+        ).all()
     db = {(t, col): (dt, nullable == "YES") for t, col, dt, nullable in rows}
     problems = []
     for table in Base.metadata.sorted_tables:

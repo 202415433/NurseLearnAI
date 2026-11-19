@@ -1,4 +1,5 @@
 """Pagination par limite/décalage, enveloppe de réponse commune."""
+
 from __future__ import annotations
 
 from typing import Annotated, Generic, TypeVar
@@ -24,8 +25,9 @@ class PageParams(BaseModel):
     offset: int
 
     def slice(self, items: list[T]) -> Page[T]:
-        return Page(items=items[self.offset:self.offset + self.limit], total=len(items),
-                       limit=self.limit, offset=self.offset)
+        return Page(
+            items=items[self.offset : self.offset + self.limit], total=len(items), limit=self.limit, offset=self.offset
+        )
 
 
 def page_params(

@@ -31,4 +31,4 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=60s --retries=12 \
 # Développement : migrations + données de référence au démarrage, puis l'API.
 # En production, les migrations seront lancées par une tâche dédiée (Phase 7).
 # Jusqu'à 10 tentatives de migration (base pas encore joignable au tout premier démarrage), puis arrêt clair.
-CMD ["sh", "-c", "n=0; until alembic upgrade head; do n=$((n+1)); if [ $n -ge 10 ]; then echo 'migrations impossibles : base injoignable' >&2; exit 1; fi; sleep 3; done && python -m app.seed && exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --proxy-headers"]
+CMD ["sh", "-c", "n=0; until alembic upgrade head; do n=$((n+1)); if [ $n -ge 10 ]; then echo 'migrations impossibles : base injoignable' >&2; exit 1; fi; sleep 3; done && python -m app.seed && exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --no-server-header"]

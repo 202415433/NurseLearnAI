@@ -3,6 +3,7 @@
 Ce module est volontairement HORS de alembic/versions/ : Alembic considère tout
 fichier .py de ce dossier comme une révision (anomalie A10, Phase 1.1).
 """
+
 from __future__ import annotations
 
 import os

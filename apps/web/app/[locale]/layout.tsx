@@ -1,20 +1,20 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense, type ReactNode } from "react";
 
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { getDictionary, isLocale, locales } from "@/lib/i18n";
+import { getDictionary, isLocale } from "@/lib/i18n";
 
 import "../globals.css";
 
 // Applique le thème mémorisé avant le premier affichage (évite le flash de couleurs).
 const themeScript = `try{var t=localStorage.getItem("nl-theme");if(t==="dark"||t==="light")document.documentElement.dataset.theme=t}catch(e){}`;
 
-export function generateStaticParams() {
-  return locales.map((locale) => ({ locale }));
-}
+// Rendu dynamique de toutes les pages : chaque réponse porte son propre nonce CSP.
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
@@ -23,15 +23,23 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   return { title: t.meta.title, description: t.meta.description, icons: { icon: "/favicon.svg" } };
 }
 
-export default async function LocaleLayout({ children, params }: { children: ReactNode; params: Promise<{ locale: string }> }) {
+export default async function LocaleLayout({
+  children,
+  params,
+}: {
+  children: ReactNode;
+  params: Promise<{ locale: string }>;
+}) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const t = getDictionary(locale);
+  // Nonce CSP posé par le middleware : seul ce script en ligne est autorisé.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   return (
     <html lang={locale} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-screen bg-bg text-fg antialiased">
         <a href="#contenu" className="skip-link">

@@ -8,7 +8,13 @@ import { getDictionary } from "@/lib/i18n";
 import { localeFrom, resolvePath, single, type SearchParams } from "@/lib/route";
 export const dynamic = "force-dynamic";
 
-export default async function SpecialtiesPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: SearchParams }) {
+export default async function SpecialtiesPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string }>;
+  searchParams: SearchParams;
+}) {
   const locale = await localeFrom(params);
   const t = getDictionary(locale);
   const query = await searchParams;
@@ -37,12 +43,17 @@ export default async function SpecialtiesPage({ params, searchParams }: { params
         <AvailabilityBadge availability={p.availability} t={t.availability} />
       </div>
       <p className="mt-4 max-w-prose text-fg-muted">{t.specialties.lead}</p>
-      <Link href={base} data-testid="all-programs" className="mt-4 inline-flex min-h-11 items-center rounded-md bg-primary px-5 font-semibold text-on-primary hover:bg-primary-hover">
+      <Link
+        href={base}
+        data-testid="all-programs"
+        className="mt-4 inline-flex min-h-11 items-center rounded-md bg-primary px-5 font-semibold text-on-primary hover:bg-primary-hover"
+      >
         {t.specialties.all}
       </Link>
       <ul className="mt-6 grid gap-3 sm:grid-cols-2" data-testid="specialty-list">
         {specialties.items.map((s) => (
           <ChoiceCard
+            pendingLabel={t.states.loading}
             key={s.code}
             testId={`specialty-${s.code}`}
             href={`${base}&s=${encodeURIComponent(s.code)}`}

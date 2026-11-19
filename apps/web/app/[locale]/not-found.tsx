@@ -13,7 +13,10 @@ export default async function NotFound() {
     <div className="space-y-4" data-testid="not-found">
       <h1 className="text-3xl font-bold">{t.states.notFoundTitle}</h1>
       <p className="text-fg-muted">{t.states.notFoundText}</p>
-      <Link href={`/${locale}`} className="inline-flex min-h-11 items-center rounded-md bg-primary px-5 font-semibold text-on-primary hover:bg-primary-hover">
+      <Link
+        href={`/${locale}`}
+        className="inline-flex min-h-11 items-center rounded-md bg-primary px-5 font-semibold text-on-primary hover:bg-primary-hover"
+      >
         {t.states.backHome}
       </Link>
     </div>

@@ -11,7 +11,13 @@ import { localeFrom, orNotFound, resolvePath, single, type SearchParams } from "
 export const dynamic = "force-dynamic";
 const LIMIT = 20;
 
-export default async function ProgramsPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: SearchParams }) {
+export default async function ProgramsPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string }>;
+  searchParams: SearchParams;
+}) {
   const locale = await localeFrom(params);
   const t = getDictionary(locale);
   const query = await searchParams;
@@ -38,7 +44,10 @@ export default async function ProgramsPage({ params, searchParams }: { params: P
           { label: t.crumbs.home, href: `/${locale}` },
           { label: t.crumbs.countries, href: `/${locale}/pays` },
           { label: jurisdiction.name, href: `/${locale}/metiers?j=${encodeURIComponent(jurisdiction.code)}` },
-          { label: p.title, href: `/${locale}/specialites?j=${encodeURIComponent(jurisdiction.code)}&p=${encodeURIComponent(p.code)}` },
+          {
+            label: p.title,
+            href: `/${locale}/specialites?j=${encodeURIComponent(jurisdiction.code)}&p=${encodeURIComponent(p.code)}`,
+          },
           { label: t.crumbs.programs },
         ]}
       />
@@ -61,6 +70,7 @@ export default async function ProgramsPage({ params, searchParams }: { params: P
         <ul className="mt-6 grid gap-4" data-testid="program-list">
           {programs.items.map((prog) => (
             <ChoiceCard
+              pendingLabel={t.states.loading}
               key={prog.id}
               testId={`program-${prog.code}`}
               href={`/${locale}/programmes/${prog.id}`}
@@ -89,7 +99,12 @@ export default async function ProgramsPage({ params, searchParams }: { params: P
         limit={programs.limit}
         offset={programs.offset}
         buildHref={(o) => `${base}&offset=${o}`}
-        labels={{ label: t.a11y.pagination, previous: t.programs.previous, next: t.programs.next, pageOf: t.programs.pageOf }}
+        labels={{
+          label: t.a11y.pagination,
+          previous: t.programs.previous,
+          next: t.programs.next,
+          pageOf: t.programs.pageOf,
+        }}
       />
     </div>
   );

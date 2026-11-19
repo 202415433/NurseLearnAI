@@ -9,7 +9,13 @@ import { localeFrom, orNotFound, single, type SearchParams } from "@/lib/route";
 
 export const dynamic = "force-dynamic";
 
-export default async function JurisdictionsPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: SearchParams }) {
+export default async function JurisdictionsPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string }>;
+  searchParams: SearchParams;
+}) {
   const locale = await localeFrom(params);
   const t = getDictionary(locale);
   const query = await searchParams;
@@ -48,6 +54,7 @@ export default async function JurisdictionsPage({ params, searchParams }: { para
         <ul className="mt-6 grid gap-4 sm:grid-cols-2" data-testid="jurisdiction-list">
           {data.items.map((j) => (
             <ChoiceCard
+              pendingLabel={t.states.loading}
               key={j.code}
               testId={`jurisdiction-${j.code}`}
               href={`/${locale}/metiers?j=${encodeURIComponent(j.code)}`}

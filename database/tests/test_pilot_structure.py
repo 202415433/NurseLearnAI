@@ -1,4 +1,5 @@
 """Parcours pilote PAB Québec (lot 1.2) : structure seule, entièrement en brouillon."""
+
 from __future__ import annotations
 
 from conftest import SEEDS
@@ -16,15 +17,21 @@ def test_pilot_structure_exists_and_is_linked_to_pab_quebec(db):
 
 
 def test_pilot_contains_no_published_or_reviewed_content(db):
-    assert db.sql("""SELECT count(*) FROM lesson_versions lv JOIN lessons l ON l.id = lv.lesson_id
+    assert (
+        db.sql("""SELECT count(*) FROM lesson_versions lv JOIN lessons l ON l.id = lv.lesson_id
                      JOIN modules m ON m.id = l.module_id
                      WHERE m.code = 'hygiene-mains-prevention-infections'
-                       AND (lv.status <> 'draft' OR lv.reviewed_by IS NOT NULL)""") == "0"
+                       AND (lv.status <> 'draft' OR lv.reviewed_by IS NOT NULL)""")
+        == "0"
+    )
     # Chaque leçon existe en FR et en EN, sans aucun bloc de contenu rédigé.
-    assert db.sql("""SELECT count(*) FROM lesson_versions lv JOIN lessons l ON l.id = lv.lesson_id
+    assert (
+        db.sql("""SELECT count(*) FROM lesson_versions lv JOIN lessons l ON l.id = lv.lesson_id
                      JOIN modules m ON m.id = l.module_id
                      WHERE m.code = 'hygiene-mains-prevention-infections'
-                       AND jsonb_array_length(lv.body->'blocks') = 0""") == "8"
+                       AND jsonb_array_length(lv.body->'blocks') = 0""")
+        == "8"
+    )
 
 
 def test_pilot_seed_is_idempotent(db):
