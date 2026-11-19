@@ -1,4 +1,4 @@
-# Applique le schéma et les données de référence dans le conteneur PostgreSQL local.
+﻿# Applique le schéma et les données de référence dans le conteneur PostgreSQL local.
 # Usage (PowerShell, à la racine du projet) :  .\scripts\db-apply.ps1
 # Phase 1 uniquement : à partir de la Phase 2, utiliser "alembic upgrade head".
 $ErrorActionPreference = "Stop"

@@ -213,7 +213,8 @@ jobs:
         # Environnement réel de l'API (dépendances + outils de développement) audité tel qu'installé.
         run: |
           pip install -e ".[dev]" pip-audit
-          pip-audit --strict --skip-editable
+          pip freeze --exclude-editable > /tmp/req.txt
+          pip-audit --strict --disable-pip --no-deps -r /tmp/req.txt
 
   design-tokens:
     name: Design system (contrastes WCAG)
@@ -235,6 +236,11 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
+      - name: Scripts PowerShell encodés en UTF-8 avec BOM (sinon Windows PowerShell 5.1 les lit en ANSI)
+        run: |
+          for f in scripts/*.ps1; do
+            head -c3 "$f" | od -An -tx1 | grep -q "ef bb bf" || { echo "BOM manquant : $f"; exit 1; }
+          done
       - name: Configuration (racine et infra)
         run: |
           cp .env.example .env

@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # NurseLearn AI — Validation de la Phase 1.2 (API FastAPI + parcours web)
 # Usage (PowerShell, à la racine du dépôt C:\NurseLearnAI-git) :
 #   powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase1.2.ps1

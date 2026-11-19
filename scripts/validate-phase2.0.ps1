@@ -63,8 +63,11 @@ Result "branche_phase_2_0" ($branch -eq "phase-2.0-security-quality") $branch
 # -----------------------------------------------------------------------------
 # 1. package-lock.json aligné sur package.json (aucun node_modules écrit chez vous)
 # -----------------------------------------------------------------------------
-$r = Run "Mise à jour de package-lock.json (npm install --package-lock-only)" {
-    docker run --rm -v "${root}:/repo" -w /repo/apps/web node:22-bookworm sh -c "npm install --package-lock-only --no-audit --no-fund --loglevel=error && npm ci --dry-run --no-audit --no-fund --loglevel=error > /dev/null && echo lock-ok"
+# Trois tentatives, de la plus conservatrice à la plus large (anomalie npm « reading 'edgesOut' »
+# connue avec les « overrides » et --package-lock-only) ; node_modules reste dans un volume anonyme.
+$npmFlags = "--no-audit --no-fund --loglevel=error"
+$r = Run "Mise à jour de package-lock.json" {
+    docker run --rm -v "${root}:/repo" -v /repo/apps/web/node_modules -w /repo/apps/web node:22-bookworm sh -c "(npm install --package-lock-only $npmFlags || (echo 'repli 1 : installation complète' && npm install $npmFlags) || (echo 'repli 2 : lockfile régénéré à partir de package.json' && rm -f package-lock.json && npm install $npmFlags)) && npm ci --dry-run $npmFlags > /dev/null && echo lock-ok"
 }
 Result "lock_npm_coherent" ($r.Code -eq 0 -and $r.Out -match 'lock-ok')
 
@@ -81,7 +84,7 @@ $detail = if ($v) { "critiques=$($v.critical) élevées=$($v.high) modérées=$(
 Result "npm_aucune_vulnerabilite_elevee_ou_critique" ($v -and $v.critical -eq 0 -and $v.high -eq 0) $detail
 
 $r = Run "pip-audit (dépendances de l'API)" {
-    docker run --rm -v "${root}:/repo" -w /repo/services/api -e PIP_DISABLE_PIP_VERSION_CHECK=1 -e PYTHONDONTWRITEBYTECODE=1 python:3.12-slim sh -c "pip install -q --root-user-action=ignore -e '.[dev]' pip-audit && pip-audit --strict --skip-editable"
+    docker run --rm -v "${root}:/repo" -w /repo/services/api -e PIP_DISABLE_PIP_VERSION_CHECK=1 -e PYTHONDONTWRITEBYTECODE=1 python:3.12-slim sh -c "pip install -q --root-user-action=ignore -e '.[dev]' pip-audit && pip freeze --exclude-editable > /tmp/req.txt && pip-audit --strict --disable-pip --no-deps -r /tmp/req.txt"
 }
 Result "pip_audit_sans_vulnerabilite" ($r.Code -eq 0)
 
@@ -101,12 +104,20 @@ Result "web_eslint_prettier_typescript" ($r.Code -eq 0)
 # 4. Non-régression complète (Phase 1.2 : pile Docker, API, Web, tests, Playwright + axe)
 # -----------------------------------------------------------------------------
 Log ""; Log ">>> Non-régression : scripts\validate-phase1.2.ps1"
+$regStart = Get-Date
 powershell -ExecutionPolicy Bypass -File "$root\scripts\validate-phase1.2.ps1" | Out-Null
-$reg = Get-ChildItem "$logDir\phase1.2-*.log" | Sort-Object LastWriteTime | Select-Object -Last 1
+# Seul un journal créé par CETTE exécution compte (sinon le script n'a pas pu démarrer).
+$reg = Get-ChildItem "$logDir\phase1.2-*.log" | Where-Object { $_.CreationTime -ge $regStart } | Sort-Object LastWriteTime | Select-Object -Last 1
+if (-not $reg) {
+    Result "non_regression_phase_1_2" $false "aucun nouveau journal : validate-phase1.2.ps1 n'a pas démarré"
+    $reg = $null
+}
+if ($reg) {
 $summary = Select-String -Path $reg.FullName -Pattern "^Total : (\d+) contrôles, (\d+) échec" | Select-Object -Last 1
 $fails = if ($summary) { [int]$summary.Matches[0].Groups[2].Value } else { -1 }
 Select-String -Path $reg.FullName -Pattern "=> \[FAIL\]" | ForEach-Object { Log "    $($_.Line.Trim())" }
 Result "non_regression_phase_1_2" ($fails -eq 0) "$($summary.Line) — journal $($reg.Name)"
+}
 
 # -----------------------------------------------------------------------------
 # 5. Sécurité HTTP (pile démarrée par l'étape 4)

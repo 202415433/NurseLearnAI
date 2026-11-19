@@ -53,6 +53,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             log.warning("ratelimit_indisponible")
             return await call_next(request)
         remaining = max(self.per_minute - int(count), 0)
+        response: Response
         if count > self.per_minute:
             response = problem_response(
                 request,
