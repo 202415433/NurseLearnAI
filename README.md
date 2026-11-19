@@ -9,9 +9,9 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 | Phase | Statut |
 |---|---|
 | 1 — Analyse et architecture | ✅ livrée — [`docs/VALIDATION-PHASE1.md`](docs/VALIDATION-PHASE1.md) |
-| 1.1 — Validation technique | ✅ 30/30 sur Windows et CI GitHub 4/4 — [`docs/VALIDATION-PHASE1.1.md`](docs/VALIDATION-PHASE1.1.md), décision : [`docs/PHASE2-READINESS.md`](docs/PHASE2-READINESS.md) |
-| 1.2 — API publique et parcours web | ✅ 52/52 sur Windows, CI en attente du push — [`docs/VALIDATION-PHASE1.2.md`](docs/VALIDATION-PHASE1.2.md) · [API](docs/API-REFERENCE.md) · [interface](docs/FRONTEND-ARCHITECTURE.md) |
-| 2 — MVP fonctionnel | ⏸️ non autorisée avant validation de la Phase 1.2 — plan : [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
+| 1.1 — Validation technique | ✅ 30/30 sur Windows, CI 4/4, intégrée dans `main` (#1) — [`docs/VALIDATION-PHASE1.1.md`](docs/VALIDATION-PHASE1.1.md), décision : [`docs/PHASE2-READINESS.md`](docs/PHASE2-READINESS.md) |
+| 1.2 — API publique et parcours web | ✅ 52/52 sur Windows, CI 6/6, intégrée dans `main` (#2) — [`docs/VALIDATION-PHASE1.2.md`](docs/VALIDATION-PHASE1.2.md) · [API](docs/API-REFERENCE.md) · [interface](docs/FRONTEND-ARCHITECTURE.md) |
+| 2 — MVP fonctionnel | ⏸️ GO technique, en attente de votre validation — plan : [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
 | 3 à 7 | 🗓️ planifiées — voir [`docs/06-roadmap.md`](docs/06-roadmap.md) |
 
 ## Documentation
