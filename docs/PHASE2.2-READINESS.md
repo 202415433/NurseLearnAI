@@ -15,7 +15,7 @@
 
 ## 2. Prérequis avant de démarrer
 
-1. `validate-phase2.1.ps1` : 0 échec sur Windows (non-régression 1.2 et 2.0 incluse).
+1. ✅ `validate-phase2.1.ps1` : 42/42 sur Windows, non-régression 1.2 : 52/52 (voir [VALIDATION-PHASE2.1](VALIDATION-PHASE2.1.md)).
 2. Votre autorisation de pousser la branche `phase-2.1-identity-access`, puis CI verte sur la PR et fusion autorisée.
 3. Plan détaillé de la 2.2 (à rédiger, puis à valider) : modèle de progression, quiz et tentatives, règles d'attestation interne (jamais présentée comme diplôme, licence ou autorisation d'exercer).
 4. Aucun contenu médical publié : les quiz de démonstration resteront fictifs et non médicaux tant que la relecture à quatre yeux (lot 2.3) n'est pas en place.

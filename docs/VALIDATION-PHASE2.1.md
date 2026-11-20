@@ -1,6 +1,6 @@
 # Validation de la Phase 2.1 — Identité et accès
 
-Branche : `phase-2.1-identity-access` (locale, **non poussée**). Base : `main` @ `f540fce`.
+Branche : `phase-2.1-identity-access` (locale, **non poussée**, en attente d'autorisation). Base : `main` @ `f540fce`.
 Références : [plan](PHASE2.1-PLAN.md) · [ADR-0007](adr/0007-identite-acces-sessions.md) · [ADR-0008](adr/0008-residence-des-donnees.md) · [sécurité](SECURITY-IDENTITY-PHASE2.1.md) · [préparation 2.2](PHASE2.2-READINESS.md)
 
 ## 1. Procédure
@@ -21,11 +21,31 @@ Le script met à jour `package-lock.json`, lance les audits (`npm audit`, `pip-a
 | Tests de base (`database/tests`, dont 10 tests d'identité dans `test_identity_schema.py` : garde de rôles, invitations, jetons, audit) | ✅ 55/55 |
 | Ruff (lint + format), mypy | ✅ |
 | TypeScript (vérification avec déclarations simplifiées), Prettier, parité FR/EN des textes | ✅ |
-| Tests API (`tests/api/test_identity.py`, `test_mailpit.py`), Vitest, build Next.js, Playwright + axe | ⏳ à exécuter sur Windows (`validate-phase2.1.ps1`) — dépendances non installables dans cet environnement |
+| Tests API, Vitest, build Next.js, Playwright + axe | exécutés sur Windows (section 3) |
 
 ## 3. Résultats sur Windows (`validate-phase2.1.ps1`)
 
-> ⏳ À compléter après exécution : nombre de contrôles, échecs, journal `docs/validation-logs/phase2.1-<date>.log`.
+Machine de développement Windows, Docker Desktop, 19 novembre 2026.
+
+| Exécution | Commit | Résultat | Commentaire |
+|---|---|---|---|
+| n° 1 — `phase2.1-20261119-192741.log` | `352996a` | 38/42 | mypy (annotation manquante), Prettier 3.10 (mise en forme), collision de nom de module pytest (`test_identity.py` en double, qui bloquait la collecte), requête d'audit du script (`text = uuid`) — corrigés dans `b442441` |
+| n° 2 — `phase2.1-20261119-194627.log` | `b442441` | 41/42 | seul échec : délai réseau PyPI pendant l'installation (`Read timed out`), avant l'exécution de Ruff/mypy ; script rendu tolérant (`99b53c2`) |
+| Relance ciblée Ruff + mypy | `99b53c2` | ✅ | `ruff check` : aucune erreur ; `ruff format --check` : 74 fichiers conformes ; `mypy` : aucune erreur (29 fichiers) |
+
+**Bilan : 42/42 contrôles Phase 2.1 au vert** (41 dans l'exécution n° 2 + Ruff/mypy relancés seuls), dont :
+
+| Ensemble | Résultat |
+|---|---|
+| Non-régression Phase 1.2 (`phase1.2-20261119-194826.log`) | ✅ 52/52 |
+| pytest (base, migrations Alembic, API dont identité et Mailpit, unitaires) | ✅ 147 réussis, 0 ignoré |
+| Vitest | ✅ 34/34 |
+| Playwright + axe | ✅ 14 réussis, 1 ignoré (test de démonstration réservé à la CI, `E2E_DEMO`) ; les 4 parcours d'identité passent |
+| `npm audit` / `pip-audit` | ✅ 0 vulnérabilité |
+| ESLint, Prettier, TypeScript | ✅ |
+| Parcours API réel avec Mailpit, garde de rôles en base, audit immuable et sans secret, journaux sans secret | ✅ |
+| Services Docker (postgres, redis, s3, api, web sains ; mailpit actif) | ✅ |
+| Aucun programme publié | ✅ 0 |
 
 ## 4. Critères d'acceptation (Mission C)
 

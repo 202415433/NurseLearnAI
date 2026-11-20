@@ -12,7 +12,7 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 | 1.1 — Validation technique | ✅ 30/30 sur Windows, CI 4/4, intégrée dans `main` (#1) — [`docs/VALIDATION-PHASE1.1.md`](docs/VALIDATION-PHASE1.1.md), décision : [`docs/PHASE2-READINESS.md`](docs/PHASE2-READINESS.md) |
 | 1.2 — API publique et parcours web | ✅ 52/52 sur Windows, CI 6/6, intégrée dans `main` (#2) — [`docs/VALIDATION-PHASE1.2.md`](docs/VALIDATION-PHASE1.2.md) · [API](docs/API-REFERENCE.md) · [interface](docs/FRONTEND-ARCHITECTURE.md) |
 | 2.0 — Sécurité et qualité | ✅ intégrée dans `main` (#4) — [`docs/VALIDATION-PHASE2.0.md`](docs/VALIDATION-PHASE2.0.md) · [audit](docs/SECURITY-AUDIT-PHASE2.0.md) |
-| 2.1 — Identité et accès | 🧪 développée sur `phase-2.1-identity-access`, validation locale en cours — [`docs/VALIDATION-PHASE2.1.md`](docs/VALIDATION-PHASE2.1.md) · [sécurité](docs/SECURITY-IDENTITY-PHASE2.1.md) · [préparation 2.2](docs/PHASE2.2-READINESS.md) |
+| 2.1 — Identité et accès | ✅ validée localement (42/42 + 52/52), branche `phase-2.1-identity-access` non poussée — [`docs/VALIDATION-PHASE2.1.md`](docs/VALIDATION-PHASE2.1.md) · [sécurité](docs/SECURITY-IDENTITY-PHASE2.1.md) · [préparation 2.2](docs/PHASE2.2-READINESS.md) |
 | 2.2 à 2.5 | 🗓️ planifiées — [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
 | 3 à 7 | 🗓️ planifiées — voir [`docs/06-roadmap.md`](docs/06-roadmap.md) |
 
