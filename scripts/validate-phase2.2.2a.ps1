@@ -71,7 +71,8 @@ $rev = Psql "SELECT version_num FROM alembic_version"
 Result "migration_0006_en_tete" ($rev -eq "0006_independent_versions") $rev
 $tables = Psql "SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_name IN ('module_versions','module_version_lessons','module_version_lesson_versions','program_release_modules','program_release_prerequisites')"
 Result "cinq_nouvelles_tables" ($tables -eq "module_version_lesson_versions,module_version_lessons,module_versions,program_release_modules,program_release_prerequisites") $tables
-$total = Psql "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
+# Même périmètre que verify_head.sql : tables du modèle, hors table technique alembic_version.
+$total = Psql "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'alembic_version'"
 Result "71_tables" ($total -eq "71") "tables=$total"
 $idx = Psql "SELECT count(*) FROM pg_indexes WHERE indexname = 'ux_lesson_versions_one_published'"
 Result "index_unicite_publication_leve" ($idx -eq "0") "index=$idx"

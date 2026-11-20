@@ -34,8 +34,8 @@
 
 ## 4. Prérequis
 
-1. PR #9 (documentation D12 et plan 2.2.2) fusionnée.
-2. 2.2.2-a validée sur Windows, poussée et fusionnée sur votre autorisation.
+1. ✅ PR #9 (documentation D12 et plan 2.2.2) fusionnée dans `main` (`401dbdb`, CI 7/7).
+2. ✅ 2.2.2-a validée sur Windows (pytest 214, non-régression complète, 71 tables) ; reste à la pousser et la fusionner sur votre autorisation.
 
 ## 5. Recommandation
 

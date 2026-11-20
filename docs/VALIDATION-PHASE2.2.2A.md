@@ -1,6 +1,6 @@
 # Validation de l'étape 2.2.2-a — Migration 0006 (versions de modules indépendantes)
 
-Branche : `phase-2.2.2a-versioning-migration` (locale, **non poussée**). Base : branche documentaire `docs-phase-2.2.2-plan` (PR #9), à rebaser sur `main` après sa fusion.
+Branche : `phase-2.2.2a-versioning-migration` (locale, **non poussée**). Base : `main` @ `401dbdb` (PR #9 fusionnée).
 Références : [ADR-0010](adr/0010-versions-de-modules-par-edition.md) (D12) · [ADR-0009](adr/0009-editions-figees-et-workflow-editorial.md) · [plan 2.2.2](PHASE2.2.2-PLAN.md) · [validation 2.2.1](VALIDATION-PHASE2.2.1.md) · [préparation 2.2.2-b](PHASE2.2.2B-READINESS.md)
 
 > Aucune ligne de l'API éditoriale (2.2.2-b) ni du catalogue (2.2.2-c). Aucun contenu médical publié, aucun relecteur fictif hors des bases de test.
@@ -73,7 +73,7 @@ Redéfinis (corps d'origine restaurés au retour arrière) : `nl_validate_releas
 | Parcours de la fixture des tests API rejoué en SQL (deux programmes, deux versions de module) | ✅ |
 | `verify_head.sql` (71 tables, contrôles 0006 ; pgvector vérifié sous Docker) | ✅ |
 | Ruff (lint + format), mypy | ✅ |
-| Tests API, Vitest, Playwright, pile Docker | ⏳ sur Windows (`validate-phase2.2.2a.ps1`) — 1re exécution : échec au démarrage de l'API (identifiant de révision de 33 caractères), corrigé |
+| Tests API, Vitest, Playwright, pile Docker | ✅ sur Windows (section 5) |
 
 ### Couverture des scénarios demandés
 
@@ -105,9 +105,29 @@ Redéfinis (corps d'origine restaurés au retour arrière) : `nl_validate_releas
 - **Refusé** avec un message listant les comptes dès qu'existent : versions de modules, éditions relationnelles, décisions sur des versions de modules, événements ou progression liés à une version de module, sources vérifiées, ou plusieurs versions publiées d'une même leçon × langue × juridiction. Le schéma et les données restent alors **inchangés** (vérifié par signature).
 - Le script de validation ne déclenche jamais de retour arrière sur la base de développement.
 
-## 5. Résultats sur Windows
+## 5. Résultats sur Windows (`validate-phase2.2.2a.ps1`)
 
-> ⏳ À compléter après `powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.2a.ps1`.
+Machine de développement Windows, Docker Desktop.
+
+| Exécution | Commit | Résultat | Commentaire |
+|---|---|---|---|
+| n° 1 — `phase2.2.2a-20261119-234240.log` | `319c887` | 5/16 | L'API ne démarrait pas : identifiant de révision de 33 caractères (> `alembic_version.version_num`, varchar(32)) ; transaction annulée, base restée en 0005 sans perte. Corrigé dans `7c58cbb` (révision `0006_independent_versions`, garde-fou de longueur) |
+| n° 2 — `phase2.2.2a-20261120-183733.log` | `7c58cbb` | 15/16 | Seul échec : le contrôle `71_tables` du script comptait aussi `alembic_version` (72) ; `verify_head.sql` confirme **71 tables**. Script corrigé (même périmètre que `verify_head.sql`) |
+
+**Bilan de l'exécution n° 2** (hors défaut du script, corrigé) :
+
+| Ensemble | Résultat |
+|---|---|
+| Non-régression 2.2.1 (16/16), qui enchaîne 2.1, 2.0 et 1.2 | ✅ 0 échec |
+| pytest : base (0005 historique + 0006), migrations Alembic avec pgvector, API (fixtures par versions de modules) | ✅ 214 réussis |
+| Vitest | ✅ 34/34 |
+| Playwright + axe | ✅ 14 réussis, 1 ignoré (démonstration réservée à la CI) |
+| Base de développement migrée en `0006_independent_versions` | ✅ |
+| `verify_head.sql` | ✅ 71 tables, 176 clés étrangères, 174 index, 68 déclencheurs, pgvector 0.8.7 |
+| 5 nouvelles tables ; index « une version publiée » levé ; éditions existantes conservées (0 en développement) | ✅ |
+| Pilote PAB en brouillon (0 édition, 0 version de module) ; aucun programme, édition ni version de module publiés | ✅ |
+| Sondes refusées avec le message attendu : édition JSON nouvelle (`nl:legacy_structure`), version de module approuvée d'office (`nl:born_draft`), vérification de source sans acteur, lien incohérent (clé étrangère composée) | ✅ 4/4 |
+| Services Docker (postgres, redis, s3, api, web) | ✅ sains |
 
 ## 6. Décisions techniques
 
