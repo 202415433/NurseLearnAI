@@ -81,12 +81,20 @@ def test_versions_folder_contains_only_revisions():
         assert "\nrevision = " in text and "\ndown_revision = " in text, f"{f.name} n'est pas une révision Alembic"
 
 
+def test_revision_ids_fit_alembic_version_table():
+    # alembic_version.version_num est un varchar(32) : un identifiant plus long fait échouer
+    # l'enregistrement de la révision (et donc le démarrage de l'API) sur une vraie base.
+    revs, _ = _load_revisions()
+    too_long = [r for r in revs if len(r) > 32]
+    assert too_long == [], f"Identifiants de révision > 32 caractères : {too_long}"
+
+
 def test_revision_chain_is_linear():
     revs, _ = _load_revisions()
     heads = [r for r in revs if not any(m.down_revision == r for m in revs.values())]
     roots = [r for r, m in revs.items() if m.down_revision is None]
     assert roots == ["0001_initial_schema"]
-    assert heads == ["0006_independent_program_versions"]
+    assert heads == ["0006_independent_versions"]
     for r, m in revs.items():
         assert m.down_revision is None or m.down_revision in revs, r
 
@@ -103,7 +111,7 @@ def test_core_upgrade_downgrade_upgrade_on_postgres():
             "0003_business_rules",
             "0004_identity",
             "0005_learning_engine",
-            "0006_independent_program_versions",
+            "0006_independent_versions",
         ]
     )
 
@@ -118,7 +126,7 @@ def test_pgvector_revision_on_postgres():
             "0003_business_rules",
             "0004_identity",
             "0005_learning_engine",
-            "0006_independent_program_versions",
+            "0006_independent_versions",
         ]
     )
 

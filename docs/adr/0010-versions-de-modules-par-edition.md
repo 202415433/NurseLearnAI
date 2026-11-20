@@ -1,6 +1,6 @@
 # ADR-0010 — Versionnement indépendant des modules par édition de programme (D12)
 
-**Statut** : décision **approuvée** le 2026-11-19 (D12) ; mise en œuvre : migration additive `0006_independent_program_versions` (étape 2.2.2-a, [validation](../VALIDATION-PHASE2.2.2A.md)).
+**Statut** : décision **approuvée** le 2026-11-19 (D12) ; mise en œuvre : migration additive `0006_independent_program_versions` (révision Alembic `0006_independent_versions`, étape 2.2.2-a, [validation](../VALIDATION-PHASE2.2.2A.md)).
 **Remplace** les points 6 et 8 d'[ADR-0009](0009-editions-figees-et-workflow-editorial.md) pour toute nouvelle édition ; les autres points d'ADR-0009 restent en vigueur.
 
 ## Contexte

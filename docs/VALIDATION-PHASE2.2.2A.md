@@ -20,7 +20,7 @@ Références : [ADR-0010](adr/0010-versions-de-modules-par-edition.md) (D12) · 
 
 ## 2. Migration `0006_independent_program_versions`
 
-Fichiers : `database/schema/0006_independent_program_versions.sql`, `…_down.sql`, révision Alembic `0006_independent_program_versions` (après `0005_learning_engine`). **Aucune migration historique modifiée.** 71 tables (66 + 5).
+Fichiers : `database/schema/0006_independent_program_versions.sql`, `…_down.sql`, révision Alembic **`0006_independent_versions`** (après `0005_learning_engine` ; identifiant raccourci car `alembic_version.version_num` est limité à 32 caractères — garde-fou `test_revision_ids_fit_alembic_version_table`). **Aucune migration historique modifiée.** 71 tables (66 + 5).
 
 ### 2.1 Tables ajoutées
 
@@ -73,7 +73,7 @@ Redéfinis (corps d'origine restaurés au retour arrière) : `nl_validate_releas
 | Parcours de la fixture des tests API rejoué en SQL (deux programmes, deux versions de module) | ✅ |
 | `verify_head.sql` (71 tables, contrôles 0006 ; pgvector vérifié sous Docker) | ✅ |
 | Ruff (lint + format), mypy | ✅ |
-| Tests API, Vitest, Playwright, pile Docker | ⏳ sur Windows (`validate-phase2.2.2a.ps1`) |
+| Tests API, Vitest, Playwright, pile Docker | ⏳ sur Windows (`validate-phase2.2.2a.ps1`) — 1re exécution : échec au démarrage de l'API (identifiant de révision de 33 caractères), corrigé |
 
 ### Couverture des scénarios demandés
 

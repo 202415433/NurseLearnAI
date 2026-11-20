@@ -68,7 +68,7 @@ if ($reg12) {
 # 2. Contrôles de l'étape 2.2.2-a (base de développement)
 # -----------------------------------------------------------------------------
 $rev = Psql "SELECT version_num FROM alembic_version"
-Result "migration_0006_en_tete" ($rev -eq "0006_independent_program_versions") $rev
+Result "migration_0006_en_tete" ($rev -eq "0006_independent_versions") $rev
 $tables = Psql "SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_name IN ('module_versions','module_version_lessons','module_version_lesson_versions','program_release_modules','program_release_prerequisites')"
 Result "cinq_nouvelles_tables" ($tables -eq "module_version_lesson_versions,module_version_lessons,module_versions,program_release_modules,program_release_prerequisites") $tables
 $total = Psql "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
@@ -86,13 +86,13 @@ Result "schema_tete_verifie" ($LASTEXITCODE -eq 0) $verify
 
 # Sondes d'écriture interdite : toutes dans une transaction annulée.
 $p1 = Psql "BEGIN; INSERT INTO program_releases (program_id, release_no, author_id, structure) SELECT p.id, 1, (SELECT id FROM users LIMIT 1), 'manifest_v1' FROM programs p WHERE p.code = 'pab-qc-socle'; ROLLBACK;"
-Result "nouvelle_edition_manifeste_refusee" ($p1 -match "ERROR|ERREUR") $p1
+Result "nouvelle_edition_manifeste_refusee" ($p1 -match "structure.*obligatoire") $p1
 $p2 = Psql "BEGIN; INSERT INTO module_versions (module_id, version_no, author_id, status) SELECT m.id, 1, (SELECT id FROM users LIMIT 1), 'approved' FROM modules m WHERE m.code = 'hygiene-mains-prevention-infections'; ROLLBACK;"
-Result "version_de_module_approuvee_d_office_refusee" ($p2 -match "ERROR|ERREUR") $p2
-$p3 = Psql "BEGIN; INSERT INTO medical_references (kind, title, last_verified_at) VALUES ('guideline', 'Sonde', current_date); ROLLBACK;"
-Result "verification_de_source_sans_relecteur_refusee" ($p3 -match "ERROR|ERREUR") $p3
+Result "version_de_module_approuvee_d_office_refusee" ($p2 -match "brouillon") $p2
+$p3 = Psql "BEGIN; INSERT INTO medical_references (kind, title, url, last_verified_at) VALUES ('guideline', 'Sonde', 'https://example.test/sonde', current_date); ROLLBACK;"
+Result "verification_de_source_sans_relecteur_refusee" ($p3 -match "nl.actor_id|relecteur") $p3
 $p4 = Psql "BEGIN; INSERT INTO module_version_lessons (module_version_id, module_id, lesson_id, position) SELECT gen_random_uuid(), l.module_id, l.id, 0 FROM lessons l LIMIT 1; ROLLBACK;"
-Result "lien_incoherent_refuse_par_cle_etrangere" ($p4 -match "foreign key|clé étrangère|ERROR|ERREUR") $p4
+Result "lien_incoherent_refuse_par_cle_etrangere" ($p4 -match "foreign key|clé étrangère") $p4
 
 $states = @{}
 foreach ($s in 'postgres', 'redis', 's3', 'api', 'web') { $states[$s] = docker inspect -f "{{.State.Health.Status}}" (docker compose ps -q $s) 2>$null }
