@@ -9,7 +9,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-API_VERSION = "0.3.0"
+API_VERSION = "0.4.0"
 
 
 class Settings(BaseSettings):
@@ -34,11 +34,56 @@ class Settings(BaseSettings):
     # Documentation interactive (/docs, /openapi.json). Défaut : activée hors production.
     docs_enabled: bool | None = None
 
+    # --- Identité et accès (Phase 2.1, ADR-0007) -------------------------------------------
+    # Clé HMAC des empreintes de jetons (sessions, vérification, réinitialisation, invitations).
+    # Obligatoire en production ; ailleurs, dérivée de DATABASE_URL si absente.
+    token_hash_key: str | None = None
+    session_idle_timeout_minutes: int = Field(120, ge=5, le=24 * 60)
+    session_absolute_lifetime_hours: int = Field(168, ge=1, le=24 * 90)
+    # Décision du 19/11/2026 : opérations sensibles refusées après 30 min d'inactivité.
+    sensitive_idle_timeout_minutes: int = Field(30, ge=1, le=30)
+    session_rotation_minutes: int = Field(15, ge=1, le=24 * 60)
+    # Tolérance pour les requêtes parallèles portant encore l'identifiant qui vient d'être remplacé.
+    session_reuse_grace_seconds: int = Field(60, ge=0, le=300)
+    email_verification_ttl_hours: int = Field(24, ge=1, le=24 * 7)
+    password_reset_ttl_minutes: int = Field(60, ge=10, le=24 * 60)
+    invitation_ttl_hours: int = Field(72, ge=1, le=24 * 30)
+    login_max_failures: int = Field(5, ge=3, le=20)
+    login_lockout_minutes: int = Field(15, ge=1, le=24 * 60)
+    # Limites propres à l'authentification (en plus de la limite générale par minute).
+    register_per_hour_per_ip: int = 10
+    login_per_10min_per_ip: int = 30
+    email_actions_per_hour_per_address: int = 3
+    email_actions_per_hour_per_ip: int = 10
+    # Versions des documents acceptés à l'inscription (textes rédigés hors du code).
+    terms_version: str = "2026-11-19"
+    privacy_policy_version: str = "2026-11-19"
+    # Courriel : « smtp » (Mailpit en local, aucun service payant), « memory » (tests), « disabled ».
+    mail_backend: Literal["smtp", "memory", "disabled"] = "smtp"
+    smtp_host: str = "localhost"
+    smtp_port: int = 1025
+    smtp_starttls: bool = False
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    mail_from: str = "NurseLearn AI <no-reply@nurselearn.local>"
+    # Adresse publique de l'interface, utilisée dans les liens des courriels.
+    public_web_url: str = "http://localhost:3000"
+    # Région d'hébergement déclarée (ADR-0008) ; déclarative, ne garantit aucune résidence.
+    data_region: str | None = None
+
     @model_validator(mode="after")
     def _production_guards(self) -> Settings:
         if self.app_env == "production" and any(o.strip() == "*" for o in self.cors_origins):
             raise ValueError("CORS_ORIGINS ne peut pas contenir « * » en production")
+        if self.app_env == "production" and (not self.token_hash_key or len(self.token_hash_key) < 32):
+            raise ValueError("TOKEN_HASH_KEY (32 caractères ou plus) est obligatoire en production")
         return self
+
+    @property
+    def effective_token_hash_key(self) -> bytes:
+        if self.token_hash_key:
+            return self.token_hash_key.encode()
+        return hashlib.sha256(f"nl-tokens:{self.database_url}".encode()).digest()
 
     @property
     def docs_visible(self) -> bool:

@@ -36,11 +36,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.trusted = trusted
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        redis = getattr(request.app.state, "redis", None)
-        if self.per_minute <= 0 or redis is None or not request.url.path.startswith("/api/"):
+        if not request.url.path.startswith("/api/"):
             return await call_next(request)
         peer = request.client.host if request.client else None
         client = await self.trusted.client_address(peer, request.headers.get("x-forwarded-for"))
+        # Adresse retenue, réutilisée par le journal d'audit et les limites d'authentification.
+        request.state.client_ip = client
+        redis = getattr(request.app.state, "redis", None)
+        if self.per_minute <= 0 or redis is None:
+            return await call_next(request)
         fingerprint = hashlib.sha256(f"{self.salt}:{client}".encode()).hexdigest()[:16]
         now = time.time()
         key = f"nl:rl:{fingerprint}:{int(now // 60)}"

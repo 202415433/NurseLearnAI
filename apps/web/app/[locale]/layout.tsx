@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense, type ReactNode } from "react";
 
+import { AccountLink } from "@/components/AccountLink";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { getDictionary, isLocale } from "@/lib/i18n";
@@ -55,6 +56,9 @@ export default async function LocaleLayout({
                 <LanguageSwitcher locale={locale} label={t.a11y.language} />
               </Suspense>
               <ThemeToggle labels={t.theme} />
+              <Suspense fallback={null}>
+                <AccountLink locale={locale} labels={t.auth.nav} />
+              </Suspense>
             </div>
           </div>
         </header>
@@ -65,6 +69,14 @@ export default async function LocaleLayout({
           <p className="mx-auto max-w-5xl px-4 py-6 text-sm text-fg-muted" data-testid="disclaimer">
             {t.disclaimer}
           </p>
+          <nav aria-label={t.auth.legal.navLabel} className="mx-auto flex max-w-5xl gap-4 px-4 pb-6 text-sm">
+            <Link href={`/${locale}/confidentialite`} className="underline">
+              {t.auth.legal.privacyTitle}
+            </Link>
+            <Link href={`/${locale}/conditions`} className="underline">
+              {t.auth.legal.termsTitle}
+            </Link>
+          </nav>
         </footer>
       </body>
     </html>

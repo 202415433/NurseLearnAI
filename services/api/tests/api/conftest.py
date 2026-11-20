@@ -59,6 +59,8 @@ def published_demo(sync_engine: Engine) -> Iterator[dict[str, str]]:
             text("INSERT INTO users (email, status, email_verified_at) VALUES (:e, 'active', now()) RETURNING id"),
             {"e": f"rev-{tag}@example.test"},
         ).scalar()
+        # Données de test : garde d'attribution des rôles (0004) contournée pour cette transaction.
+        c.execute(text("SELECT set_config('nl.role_grant_bypass', 'on', true)"))
         c.execute(
             text("INSERT INTO user_roles (user_id, role_id) SELECT :u, id FROM roles WHERE code='medical_reviewer'"),
             {"u": reviewer},

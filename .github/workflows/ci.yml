@@ -105,9 +105,16 @@ jobs:
         ports: ["6379:6379"]
         options: >-
           --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+      mailpit:
+        image: axllent/mailpit:latest
+        ports: ["1025:1025", "8025:8025"]
     env:
       DATABASE_URL: postgresql+asyncpg://postgres:ci@localhost:5432/nl_api
       REDIS_URL: redis://localhost:6379/0
+      # Courriels locaux (Mailpit) : test d'envoi réel sans service payant.
+      MAILPIT_URL: http://localhost:8025
+      SMTP_HOST: localhost
+      SMTP_PORT: "1025"
     defaults:
       run:
         working-directory: services/api
@@ -148,10 +155,20 @@ jobs:
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+      mailpit:
+        image: axllent/mailpit:latest
+        ports: ["1025:1025", "8025:8025"]
     env:
       DATABASE_URL: postgresql+asyncpg://postgres:ci@localhost:5432/nl_web
       API_INTERNAL_URL: http://localhost:8000
       NEXT_TELEMETRY_DISABLED: "1"
+      # Parcours d'identité e2e : courriels via Mailpit, cookie non « Secure » (HTTP local).
+      MAIL_BACKEND: smtp
+      SMTP_HOST: localhost
+      SMTP_PORT: "1025"
+      MAILPIT_URL: http://localhost:8025
+      PUBLIC_WEB_URL: http://localhost:3000
+      SESSION_COOKIE_SECURE: "false"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

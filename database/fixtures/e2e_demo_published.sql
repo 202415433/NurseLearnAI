@@ -17,6 +17,8 @@ BEGIN
     ON CONFLICT DO NOTHING;
   SELECT id INTO v_author FROM users WHERE email = 'e2e-author@example.test';
   SELECT id INTO v_reviewer FROM users WHERE email = 'e2e-reviewer@example.test';
+  -- Donnée de démonstration : garde d'attribution des rôles contournée pour cette transaction.
+  PERFORM set_config('nl.role_grant_bypass', 'on', true);
   INSERT INTO user_roles (user_id, role_id)
     SELECT v_reviewer, r.id FROM roles r
     WHERE r.code = 'medical_reviewer'

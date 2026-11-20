@@ -5,6 +5,7 @@ import { AvailabilityBadge } from "@/components/AvailabilityBadge";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { ChoiceCard } from "@/components/ChoiceCard";
 import { EmptyState } from "@/components/EmptyState";
+import { FormStatus } from "@/components/Form";
 import { Notice } from "@/components/Notice";
 import { Pagination } from "@/components/Pagination";
 import { getDictionary } from "@/lib/i18n";
@@ -87,5 +88,19 @@ describe("EmptyState et Notice", () => {
     );
     expect(screen.getByTestId("empty").textContent).toContain("Rien n'est publié.");
     expect(screen.getByRole("alert").textContent).toBe("Alerte");
+  });
+});
+
+describe("FormStatus (identité)", () => {
+  it("n'affiche jamais un texte venu de l'adresse : code inconnu → message générique", () => {
+    render(<FormStatus error="<img src=x>" messages={t.auth.messages} errors={t.auth.errors} />);
+    expect(screen.getByTestId("form-error").textContent).toBe(t.auth.errors.generic);
+  });
+
+  it("affiche un message d'état connu dans une région annoncée", () => {
+    render(<FormStatus status="verified" messages={t.auth.messages} errors={t.auth.errors} />);
+    const status = screen.getByTestId("form-status");
+    expect(status.getAttribute("role")).toBe("status");
+    expect(status.textContent).toBe(t.auth.messages.verified);
   });
 });

@@ -3,6 +3,31 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { defaultLocale, isLocale, locales } from "./lib/i18n";
 import { buildCsp, createNonce } from "./lib/security";
+import {
+  CHECK_COOKIE,
+  CHECK_SECONDS,
+  interpretRefresh,
+  rewriteCookieHeader,
+  type RefreshOutcome,
+} from "./lib/session-refresh";
+
+const SECURE = (process.env.SESSION_COOKIE_SECURE ?? "true") !== "false";
+const SESSION_COOKIE = SECURE ? "__Host-nl_session" : "nl_session";
+const API = (process.env.API_INTERNAL_URL ?? "http://localhost:8000").replace(/\/$/, "");
+
+async function refreshSession(token: string): Promise<RefreshOutcome> {
+  try {
+    const response = await fetch(`${API}/api/v1/auth/session/refresh`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(3000),
+    });
+    return interpretRefresh(response.status, response.status === 200 ? await response.json() : null);
+  } catch {
+    return { kind: "keep" }; // API indisponible : la page traitera la session normalement
+  }
+}
 
 function preferredLocale(request: NextRequest): string {
   const header = request.headers.get("accept-language") ?? "";
@@ -16,7 +41,7 @@ function preferredLocale(request: NextRequest): string {
   return ranked.find((r) => (locales as readonly string[]).includes(r.lang))?.lang ?? defaultLocale;
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const first = pathname.split("/")[1] ?? "";
   if (!isLocale(first)) {
@@ -36,8 +61,34 @@ export function middleware(request: NextRequest) {
   requestHeaders.set("content-security-policy", csp);
   // Langue transmise aux pages qui ne reçoivent pas les paramètres de route (not-found).
   requestHeaders.set("x-nl-locale", first);
+
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  let outcome: RefreshOutcome = { kind: "keep" };
+  if (token && !request.cookies.has(CHECK_COOKIE)) {
+    outcome = await refreshSession(token);
+    if (outcome.kind !== "keep") {
+      requestHeaders.set(
+        "cookie",
+        rewriteCookieHeader(
+          requestHeaders.get("cookie"),
+          SESSION_COOKIE,
+          outcome.kind === "rotate" ? outcome.token : null,
+        ),
+      );
+    }
+  }
+
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy", csp);
+  if (token && !request.cookies.has(CHECK_COOKIE)) {
+    const base = { httpOnly: true, secure: SECURE, sameSite: "lax" as const, path: "/" };
+    if (outcome.kind === "rotate") {
+      response.cookies.set(SESSION_COOKIE, outcome.token, { ...base, expires: new Date(outcome.expiresAt) });
+    } else if (outcome.kind === "clear") {
+      response.cookies.delete(SESSION_COOKIE);
+    }
+    if (outcome.kind !== "clear") response.cookies.set(CHECK_COOKIE, "1", { ...base, maxAge: CHECK_SECONDS });
+  }
   return response;
 }
 

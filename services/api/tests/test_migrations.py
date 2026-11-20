@@ -86,7 +86,7 @@ def test_revision_chain_is_linear():
     heads = [r for r in revs if not any(m.down_revision == r for m in revs.values())]
     roots = [r for r, m in revs.items() if m.down_revision is None]
     assert roots == ["0001_initial_schema"]
-    assert heads == ["0003_business_rules"]
+    assert heads == ["0004_identity"]
     for r, m in revs.items():
         assert m.down_revision is None or m.down_revision in revs, r
 
@@ -96,14 +96,14 @@ def _has_vector() -> bool:
 
 
 def test_core_upgrade_downgrade_upgrade_on_postgres():
-    # Sans pgvector : 0001 puis 0003 (0003 ne dépend d'aucun objet de 0002).
-    _run_chain(["0001_initial_schema", "0003_business_rules"])
+    # Sans pgvector : 0001, 0003 et 0004 (aucune ne dépend des objets de 0002).
+    _run_chain(["0001_initial_schema", "0003_business_rules", "0004_identity"])
 
 
 def test_pgvector_revision_on_postgres():
     if not _has_vector():
         pytest.skip("Extension pgvector absente : révision 0002 vérifiée en CI (image pgvector/pgvector:pg16)")
-    _run_chain(["0001_initial_schema", "0002_pgvector", "0003_business_rules"])
+    _run_chain(["0001_initial_schema", "0002_pgvector", "0003_business_rules", "0004_identity"])
 
 
 def _run_chain(chain: list[str]) -> None:
