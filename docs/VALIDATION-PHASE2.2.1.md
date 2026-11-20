@@ -1,6 +1,6 @@
 # Validation du sous-lot 2.2.1 — Modèle de données et règles éditoriales
 
-Branche : `phase-2.2.1-learning-data-model` (locale, **non poussée**). Base : tête de la PR #6 (Phase 2.1) — à rebaser sur `main` après la fusion de #6.
+Branche : `phase-2.2.1-learning-data-model` (locale, **non poussée**). Base : `main` @ `9671890` (Phase 2.1 fusionnée par #6, plan 2.2 par #7).
 Références : [plan 2.2](PHASE2.2-PLAN.md) (branche documentaire) · [ADR-0009](adr/0009-editions-figees-et-workflow-editorial.md) (proposé) · [ADR-0004](adr/0004-relecture-quatre-yeux-et-attestations.md) · [préparation 2.2.2](PHASE2.2.2-READINESS.md)
 
 > Aucun développement des sous-lots 2.2.2 et suivants. Aucun contenu médical publié ni déclaré validé.
@@ -54,7 +54,7 @@ Fichiers : `database/schema/0005_learning_engine.sql`, `0005_learning_engine_dow
 | Fixture de démonstration CI rejouée deux fois (idempotente) via le workflow | ✅ |
 | Parcours de la fixture des tests API rejoué en SQL (publication, catalogue, archivage) | ✅ |
 | Ruff (lint + format), mypy | ✅ |
-| Tests API, Vitest, Playwright, pile Docker | ⏳ sur Windows (`validate-phase2.2.1.ps1`) |
+| Tests API, Vitest, Playwright, pile Docker | ✅ sur Windows (section 4) |
 
 ### Couverture des tests demandés
 
@@ -77,9 +77,23 @@ Fichiers : `database/schema/0005_learning_engine.sql`, `0005_learning_engine_dow
 
 Cinq tests du lot 1 inséraient directement des versions « approuvées » ou « publiées », ce que 0005 interdit désormais : ils passent maintenant par le workflow et vérifient la même règle (relecteur habilité, auteur ≠ relecteur, publication sans relecture refusée, une version publiée par langue). La fixture des tests API (`published_demo`) et la fixture CI (`e2e_demo_published.sql`) suivent le workflow complet et sont **non médicales** (`is_medical = false`) ; la fixture API archive ses éditions au lieu de les supprimer (historique immuable).
 
-## 4. Résultats sur Windows
+## 4. Résultats sur Windows (`validate-phase2.2.1.ps1`)
 
-> ⏳ À compléter après `powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.1.ps1`.
+Machine de développement Windows, Docker Desktop, 19 novembre 2026, commit `02d6368` — journal `phase2.2.1-20261119-215818.log`.
+
+**16/16 contrôles 2.2.1, 0 échec**, plus la non-régression complète :
+
+| Ensemble | Résultat |
+|---|---|
+| Non-régression Phase 2.1 (`phase2.1-20261119-215819.log`), incluant qualité, audits, parcours d'identité | ✅ 42/42 |
+| Non-régression Phase 1.2 (`phase1.2-20261119-220201.log`) | ✅ |
+| pytest : base (dont les 45 tests de 0005), migrations Alembic avec pgvector, API (dont fixtures menées par le workflow) | ✅ 192 réussis |
+| Vitest | ✅ 34/34 |
+| Playwright + axe | ✅ 14 réussis, 1 ignoré (démonstration réservée à la CI) |
+| Base de développement migrée en `0005_learning_engine`, 4 nouvelles tables, états à cinq valeurs, aucun `in_review` | ✅ |
+| Pilote PAB : programme en brouillon, aucune édition, aucune version hors brouillon ; aucun programme ni édition publiés | ✅ |
+| Sondes refusées par PostgreSQL (transaction annulée) : publication directe d'un programme, transition sans acteur, insertion d'une version « publiée », TRUNCATE du journal éditorial et de l'historique, décision forgée | ✅ 6/6 |
+| Services Docker (postgres, redis, s3, api, web) | ✅ sains |
 
 ## 5. Limites
 

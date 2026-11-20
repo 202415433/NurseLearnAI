@@ -33,8 +33,8 @@
 
 ## 4. Prérequis
 
-1. PR #6 (Phase 2.1) fusionnée ; plan 2.2 intégré à `main`.
-2. Sous-lot 2.2.1 validé sur Windows, poussé et fusionné sur votre autorisation.
+1. ✅ PR #6 (Phase 2.1) et PR #7 (plan 2.2) fusionnées dans `main` (`9671890`).
+2. ✅ Sous-lot 2.2.1 validé sur Windows (16/16, pytest 192, non-régression 42/42) ; reste à le pousser et le fusionner sur votre autorisation.
 3. Réponse à D12.
 
 ## 5. Recommandation

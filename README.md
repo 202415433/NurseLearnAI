@@ -13,7 +13,7 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 | 1.2 — API publique et parcours web | ✅ 52/52 sur Windows, CI 6/6, intégrée dans `main` (#2) — [`docs/VALIDATION-PHASE1.2.md`](docs/VALIDATION-PHASE1.2.md) · [API](docs/API-REFERENCE.md) · [interface](docs/FRONTEND-ARCHITECTURE.md) |
 | 2.0 — Sécurité et qualité | ✅ intégrée dans `main` (#4) — [`docs/VALIDATION-PHASE2.0.md`](docs/VALIDATION-PHASE2.0.md) · [audit](docs/SECURITY-AUDIT-PHASE2.0.md) |
 | 2.1 — Identité et accès | ✅ validée (42/42 + 52/52), CI 7/7, PR #6 — [`docs/VALIDATION-PHASE2.1.md`](docs/VALIDATION-PHASE2.1.md) · [sécurité](docs/SECURITY-IDENTITY-PHASE2.1.md) · [préparation 2.2](docs/PHASE2.2-READINESS.md) |
-| 2.2.1 — Modèle pédagogique et règles éditoriales | 🧪 développé sur `phase-2.2.1-learning-data-model`, validation en cours — [`docs/VALIDATION-PHASE2.2.1.md`](docs/VALIDATION-PHASE2.2.1.md) · [ADR-0009](docs/adr/0009-editions-figees-et-workflow-editorial.md) · [préparation 2.2.2](docs/PHASE2.2.2-READINESS.md) |
+| 2.2.1 — Modèle pédagogique et règles éditoriales | ✅ validé localement (16/16 + non-régression), branche `phase-2.2.1-learning-data-model` non poussée — [`docs/VALIDATION-PHASE2.2.1.md`](docs/VALIDATION-PHASE2.2.1.md) · [ADR-0009](docs/adr/0009-editions-figees-et-workflow-editorial.md) · [préparation 2.2.2](docs/PHASE2.2.2-READINESS.md) |
 | 2.2.2 à 2.5 | 🗓️ planifiées — [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
 | 3 à 7 | 🗓️ planifiées — voir [`docs/06-roadmap.md`](docs/06-roadmap.md) |
 
