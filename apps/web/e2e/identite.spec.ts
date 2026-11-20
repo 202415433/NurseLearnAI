@@ -11,6 +11,9 @@ const PASSWORD = "parcours-e2e-Phase21-sur";
 const NEW_PASSWORD = "nouvelle-phrase-e2e-2026-ok";
 
 async function expectAccessible(page: Page) {
+  // Après une redirection d'action serveur, Next.js 15 diffuse les métadonnées (dont <title>)
+  // en différé : on attend qu'un titre réel soit présent avant l'analyse axe.
+  await expect(page).toHaveTitle(/NurseLearn AI/);
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
     .analyze();
