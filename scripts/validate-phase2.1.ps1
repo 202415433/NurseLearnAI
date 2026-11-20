@@ -115,7 +115,7 @@ $v = if ($audit) { $audit.metadata.vulnerabilities } else { $null }
 $detail = if ($v) { "critiques=$($v.critical) élevées=$($v.high) modérées=$($v.moderate) faibles=$($v.low)" } else { "rapport illisible" }
 Result "npm_aucune_vulnerabilite_elevee_ou_critique" ($v -and $v.critical -eq 0 -and $v.high -eq 0) $detail
 $r = Run "pip-audit (dépendances de l'API, dont argon2-cffi)" {
-    docker run --rm -v "${root}:/repo" -w /repo/services/api -e PIP_DISABLE_PIP_VERSION_CHECK=1 -e PYTHONDONTWRITEBYTECODE=1 python:3.12-slim sh -c "pip install -q --root-user-action=ignore -e '.[dev]' pip-audit && pip freeze --exclude-editable > /tmp/req.txt && pip-audit --strict --disable-pip --no-deps -r /tmp/req.txt"
+    docker run --rm -v "${root}:/repo" -w /repo/services/api -e PIP_DISABLE_PIP_VERSION_CHECK=1 -e PYTHONDONTWRITEBYTECODE=1 python:3.12-slim sh -c "pip install -q --retries 10 --timeout 120 --root-user-action=ignore -e '.[dev]' pip-audit && pip freeze --exclude-editable > /tmp/req.txt && pip-audit --strict --disable-pip --no-deps -r /tmp/req.txt"
 }
 Result "pip_audit_sans_vulnerabilite" ($r.Code -eq 0)
 
@@ -123,7 +123,7 @@ Result "pip_audit_sans_vulnerabilite" ($r.Code -eq 0)
 # 3. Qualité du code
 # -----------------------------------------------------------------------------
 $r = Run "Python : Ruff (lint + format) et mypy" {
-    docker run --rm -v "${root}:/repo" -w /repo/services/api -e PYTHONDONTWRITEBYTECODE=1 python:3.12-slim sh -c "pip install -q --root-user-action=ignore -e '.[dev]' && cd /repo && ruff check . && ruff format --check . && cd services/api && mypy"
+    docker run --rm -v "${root}:/repo" -w /repo/services/api -e PYTHONDONTWRITEBYTECODE=1 python:3.12-slim sh -c "pip install -q --retries 10 --timeout 120 --root-user-action=ignore -e '.[dev]' && cd /repo && ruff check . && ruff format --check . && cd services/api && mypy"
 }
 Result "python_ruff_mypy" ($r.Code -eq 0)
 $r = Run "Web : ESLint, Prettier, TypeScript" {
