@@ -75,6 +75,7 @@ def db():
     if d.sql("SELECT count(*) FROM pg_available_extensions WHERE name = 'vector'") == "1":
         d.file(SCHEMA / "0002_pgvector.sql")
     d.file(SCHEMA / "0003_business_rules.sql")  # indépendante des objets de 0002
+    d.file(SCHEMA / "0004_identity.sql")
     for seed in sorted(SEEDS.glob("*.sql")):
         d.file(seed)
     yield d
@@ -98,13 +99,18 @@ def make_user(db):
 
 @pytest.fixture
 def grant_role(db):
-    """Attribue un rôle (global si org est None) à un utilisateur."""
+    """Attribue un rôle (global si org est None) à un utilisateur.
+
+    Données de test : la garde d'attribution (migration 0004) est contournée explicitement,
+    comme le ferait la commande d'exploitation ; ses règles sont testées à part.
+    """
 
     def _grant(user_id: str, role_code: str, org: str | None = None) -> None:
         org_sql = f"'{org}'" if org else "NULL"
         db.sql(
+            "BEGIN; SELECT set_config('nl.role_grant_bypass', 'on', true); "
             f"INSERT INTO user_roles (user_id, role_id, organization_id) "
-            f"SELECT '{user_id}', id, {org_sql} FROM roles WHERE code = '{role_code}'"
+            f"SELECT '{user_id}', id, {org_sql} FROM roles WHERE code = '{role_code}'; COMMIT;"
         )
 
     return _grant

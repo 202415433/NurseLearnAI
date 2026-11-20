@@ -7,7 +7,7 @@ DECLARE
 BEGIN
   SELECT count(*) INTO n_tables FROM information_schema.tables
    WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'alembic_version';
-  IF n_tables <> 60 THEN RAISE EXCEPTION 'Attendu 60 tables, trouvé %', n_tables; END IF;
+  IF n_tables <> 62 THEN RAISE EXCEPTION 'Attendu 62 tables (60 + invitations, one_time_tokens de 0004), trouvé %', n_tables; END IF;
 
   SELECT count(*) INTO n_missing FROM unnest(ARRAY['users','roles','profiles','countries','jurisdictions','professions',
     'specialties','programs','modules','lessons','learning_objectives','competencies','learning_resources',
@@ -30,6 +30,8 @@ BEGIN
 
   IF to_regprocedure('nl_user_has_permission(uuid,text,uuid)') IS NULL THEN
     RAISE EXCEPTION 'Migration 0003 non appliquée (nl_user_has_permission absente)'; END IF;
+  IF to_regprocedure('nl_guard_role_grant()') IS NULL OR to_regclass('public.invitations') IS NULL THEN
+    RAISE EXCEPTION 'Migration 0004 non appliquée (garde des rôles ou invitations absente)'; END IF;
   SELECT count(*) INTO n_trg FROM pg_trigger WHERE NOT tgisinternal;
   SELECT count(*) INTO n_idx FROM pg_indexes WHERE schemaname = 'public';
 

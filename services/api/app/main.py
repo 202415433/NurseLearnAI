@@ -1,4 +1,4 @@
-"""Point d'entrée de l'API NurseLearn AI (Phase 1.2 : santé, référentiels, catalogue)."""
+"""Point d'entrée de l'API NurseLearn AI (santé, référentiels, catalogue, identité et accès)."""
 
 from __future__ import annotations
 
@@ -15,9 +15,12 @@ from app.core.clientip import TrustedProxies
 from app.core.config import API_VERSION, Settings, get_settings
 from app.core.errors import install_error_handlers, problem_response
 from app.core.logging import RequestContextMiddleware, configure_logging
+from app.core.mailer import Mailer
 from app.core.ratelimit import RateLimitMiddleware
 from app.db.session import create_engine, create_sessionmaker
 from app.domains.catalog.router import router as catalog_router
+from app.domains.identity.organizations import router as organizations_router
+from app.domains.identity.router import router as identity_router
 from app.domains.reference.router import router as reference_router
 
 log = logging.getLogger("nurselearn.api")
@@ -61,6 +64,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/openapi.json" if settings.docs_visible else None,
         redoc_url=None,
     )
+    app.state.settings = settings
+    app.state.mailer = Mailer(settings)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -123,7 +128,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return problem_response(
                 request, 503, "Service Unavailable", "Dépendance indisponible", extra={"checks": checks}
             )
-        return JSONResponse({"status": "ready", "checks": checks})
+        # Région déclarée (ADR-0008) : information de configuration, pas une garantie de résidence.
+        return JSONResponse({"status": "ready", "checks": checks, "region": settings.data_region})
 
     @app.get("/api/v1/about", tags=["santé"], summary="Mentions obligatoires")
     async def about() -> dict[str, object]:
@@ -131,6 +137,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(reference_router)
     app.include_router(catalog_router)
+    app.include_router(identity_router)
+    app.include_router(organizations_router)
     return app
 
 

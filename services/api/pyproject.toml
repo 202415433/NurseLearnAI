@@ -17,6 +17,8 @@ dependencies = [
   "pydantic>=2.8,<3",
   "pydantic-settings>=2.4,<3",
   "redis>=5.0,<7",
+  # Hachage des mots de passe (Argon2id, recommandation OWASP).
+  "argon2-cffi>=23.1,<26",
 ]
 
 [project.optional-dependencies]

@@ -2,7 +2,7 @@
 // Toutes les données affichées viennent de l'API (donc de PostgreSQL) : rien n'est codé en dur ici.
 import type { Locale } from "./i18n";
 
-const BASE_URL = (process.env.API_INTERNAL_URL ?? "http://localhost:8000").replace(/\/$/, "");
+export const BASE_URL = (process.env.API_INTERNAL_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
 export class ApiError extends Error {
   constructor(
@@ -99,7 +99,7 @@ export function isValid(kind: keyof typeof patterns, value: string | undefined):
 // (l'API ne la lit que si ce serveur fait partie de ses mandataires approuvés : TRUSTED_PROXIES).
 const IP_PATTERN = /^[0-9A-Fa-f:.]{2,45}$/;
 
-async function visitorAddress(): Promise<string | undefined> {
+export async function visitorAddress(): Promise<string | undefined> {
   try {
     const { headers } = await import("next/headers");
     const h = await headers();

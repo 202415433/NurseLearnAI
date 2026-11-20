@@ -203,7 +203,7 @@ do { Start-Sleep -Seconds 3; $ready = Http "$api/ready" } while ($ready.Status -
 $after = (Psql $PGDB "SELECT count(*) FROM professions") | Select-Object -First 1
 Result "persistance_apres_redemarrage" ($ready.Status -eq 200 -and "$after" -eq "$before" -and "$after" -ne "") "avant=$before après=$after"
 $rev = Psql $PGDB "SELECT version_num FROM alembic_version"
-Result "migrations_a_jour" ("$rev" -match '0003') "$rev"
+Result "migrations_a_jour" ("$rev" -match '^000[3-9]_') "$rev"
 
 # -----------------------------------------------------------------------------
 # 6. Tests automatisés
@@ -214,14 +214,14 @@ $r = Run "pytest : base, migrations, API, unitaires (bases jetables)" {
     docker run --rm --network $net -v "${root}:/repo" -w /repo `
         -e "DATABASE_URL=postgresql+asyncpg://${PGU}:${PGPW}@postgres:5432/nl_validation_api" `
         -e "REDIS_URL=redis://:$($envVars['REDIS_PASSWORD'])@redis:6379/0" `
-        -e DEBIAN_FRONTEND=noninteractive -e NL_TEST_PGHOST=postgres -e NL_TEST_PGPORT=5432 -e NL_TEST_PGUSER=$PGU -e PGPASSWORD=$PGPW -e PYTHONDONTWRITEBYTECODE=1 `
+        -e DEBIAN_FRONTEND=noninteractive -e MAILPIT_URL=http://mailpit:8025 -e SMTP_HOST=mailpit -e SMTP_PORT=1025 -e NL_TEST_PGHOST=postgres -e NL_TEST_PGPORT=5432 -e NL_TEST_PGUSER=$PGU -e PGPASSWORD=$PGPW -e PYTHONDONTWRITEBYTECODE=1 `
         python:3.12-slim sh -c "apt-get update -qq >/dev/null && apt-get install -y -qq postgresql-client >/dev/null && cd services/api && pip install -q --disable-pip-version-check --root-user-action=ignore -e '.[dev]' && alembic upgrade head && python -m app.seed && cd /repo && python -m pytest -q -rs -p no:cacheprovider database/tests services/api/tests"
 }
 Result "pytest_complet" ($r.Code -eq 0) (($r.Out -split "`n" | Select-String "passed|failed|error") -join " ")
 Psql "postgres" "DROP DATABASE IF EXISTS nl_validation_api WITH (FORCE)" | Out-Null
 
 $r = Run "Web : typecheck + tests de composants (Vitest) + parcours Playwright + axe" {
-    docker run --rm --network $net -v "${root}:/repo" -v /repo/apps/web/node_modules -w /repo/apps/web -e E2E_BASE_URL=http://web:3000 -e CI=1 `
+    docker run --rm --network $net -v "${root}:/repo" -v /repo/apps/web/node_modules -w /repo/apps/web -e E2E_BASE_URL=http://web:3000 -e CI=1 -e MAILPIT_URL=http://mailpit:8025 `
         node:22-bookworm sh -c "npm ci --no-audit --no-fund --silent && npm run typecheck && npm test && npx playwright install --with-deps chromium > /dev/null && npx playwright test --reporter=list"
 }
 Result "web_tests_vitest_playwright_axe" ($r.Code -eq 0) (($r.Out -split "`n" | Select-String "Tests |passed|failed|skipped") -join " ")
@@ -231,7 +231,7 @@ Result "web_tests_vitest_playwright_axe" ($r.Code -eq 0) (($r.Out -split "`n" | 
 # -----------------------------------------------------------------------------
 $logs = (docker compose logs --no-color 2>&1 | Out-String)
 $leaks = 0
-foreach ($k in 'POSTGRES_PASSWORD','REDIS_PASSWORD','S3_SECRET_KEY','JWT_SIGNING_KEY') { $v = $envVars[$k]; if ($v -and $logs.Contains($v)) { $leaks++ } }
+foreach ($k in 'POSTGRES_PASSWORD','REDIS_PASSWORD','S3_SECRET_KEY','JWT_SIGNING_KEY','TOKEN_HASH_KEY') { $v = $envVars[$k]; if ($v -and $logs.Contains($v)) { $leaks++ } }
 Result "aucun_secret_dans_les_journaux" (($leaks -eq 0) -and ($logs.Length -gt 1024)) "($leaks fuite(s), $([int]($logs.Length/1024)) Ko)"
 
 Log ""; Log "================ SYNTHÈSE ================"

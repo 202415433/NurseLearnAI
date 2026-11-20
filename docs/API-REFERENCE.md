@@ -47,6 +47,33 @@ Un métier appartient à **une seule** juridiction : l'API ne déduit jamais d'�
 
 Pour chaque leçon, la version publiée retenue est, dans l'ordre : langue demandée + juridiction du programme, langue demandée commune, langue de repli + juridiction, langue de repli commune.
 
+### Identité et accès (Phase 2.1)
+
+Authentification par `Authorization: Bearer <identifiant de session>` uniquement (aucun cookie lu par l'API). Erreurs au format `application/problem+json` (`type` sous `https://nurselearn.ai/problems/`). « Sensible » = refusé (403 `reauthentication-required`) après 30 min d'inactivité tant que `/auth/reauthenticate` n'a pas été appelé.
+
+| Méthode et chemin | Accès | Réponse |
+|---|---|---|
+| `POST /api/v1/auth/register` | public | 202 toujours identique ; 422 `consent-required`, `weak-password` ; 429 |
+| `POST /api/v1/auth/verify-email` | public | 200 `verified` ; 400 `invalid-token` |
+| `POST /api/v1/auth/resend-verification` | public | 202 toujours identique |
+| `POST /api/v1/auth/login` | public | 200 session + profil ; 401 `invalid-credentials` (uniforme) ; 403 `email-not-verified` |
+| `POST /api/v1/auth/session/refresh` | session | 200 `{rotated, session_token?, expires_at, sensitive_fresh}` |
+| `POST /api/v1/auth/reauthenticate` | session | 200 nouvelle session « fraîche » |
+| `POST /api/v1/auth/logout` · `/auth/logout-all` | session · sensible | 204 |
+| `POST /api/v1/auth/password/forgot` | public | 202 toujours identique |
+| `POST /api/v1/auth/password/reset` | public (jeton) | 200 ; toutes les sessions fermées |
+| `POST /api/v1/auth/password/change` | sensible | 200 nouvelle session ; autres sessions fermées |
+| `GET /api/v1/me` · `PATCH /api/v1/me/profile` | session | profil, rôles, permissions |
+| `GET /api/v1/me/sessions` · `DELETE /api/v1/me/sessions/{id}` | session | sessions de l'utilisateur seulement |
+| `GET /api/v1/organizations/mine` | session | établissements de l'utilisateur |
+| `GET /api/v1/organizations/{id}/members` · `/invitations` | `org:manage` dans l'établissement | 404 hors périmètre |
+| `GET /api/v1/organizations/{id}/programs` | membre ou administrateur | 404 hors périmètre |
+| `GET /api/v1/admin/organizations` · `GET /api/v1/invitations` | administrateur de la plateforme | 404 sinon |
+| `POST /api/v1/invitations` | sensible ; émetteur habilité | 201 ; 403 ; 409 invitation en attente |
+| `DELETE /api/v1/invitations/{id}` | émetteur habilité | 204 |
+| `POST /api/v1/invitations/inspect` · `/accept` | session, adresse vérifiée identique | aperçu ; 200 nouvelle session avec le rôle |
+| `DELETE /api/v1/organizations/{id}/members/{user}/roles/{role}` · `/admin/users/{user}/roles/{role}` | sensible | 204 ; sessions de la personne fermées |
+
 ## Exemples
 
 ```powershell

@@ -13,7 +13,7 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "SIM"]
 # Tests : assert attendu ; psql lancé sans shell avec des arguments fixes ;
 # SQL de test construit à partir de valeurs générées par les tests eux-mêmes.
 # Longues lignes : chaînes SQL de test, laissées entières pour rester lisibles.
-"**/tests/**" = ["S101", "S603", "S607", "S608", "E501"]
+"**/tests/**" = ["S101", "S105", "S106", "S603", "S607", "S608", "E501"]
 # Modèle Pydantic générique : on garde Generic[T], forme documentée par Pydantic.
 "services/api/app/core/pagination.py" = ["UP046"]
 

@@ -69,7 +69,7 @@ services:
       - "127.0.0.1:1025:1025"
       - "127.0.0.1:8025:8025"
 
-  api:                                      # API FastAPI (Phase 1.2)
+  api:                                      # API FastAPI (Phases 1.2 à 2.1)
     build:
       context: ..
       dockerfile: services/api/Dockerfile
@@ -79,6 +79,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     environment:
       APP_ENV: ${APP_ENV:-development}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-nurselearn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nurselearn}
@@ -90,10 +92,31 @@ services:
       # le conteneur « web » est approuvé comme mandataire. En production : l'adresse du reverse proxy.
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-300}
       TRUSTED_PROXIES: '${TRUSTED_PROXIES:-["web"]}'
+      # Identité (Phase 2.1) : courriels capturés par Mailpit (aucun envoi réel), liens vers l'interface.
+      MAIL_BACKEND: smtp
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
+      # Clé HMAC des jetons : obligatoire en production ; vide en local = dérivée de DATABASE_URL.
+      TOKEN_HASH_KEY: ${TOKEN_HASH_KEY:-}
+      # Région déclarée (ADR-0008) : information de configuration, aucune garantie de résidence.
+      DATA_REGION: ${DATA_REGION:-local-dev}
+      # Durées de session et de jetons (documentées dans .env.example, ADR-0007).
+      SESSION_IDLE_TIMEOUT_MINUTES: ${SESSION_IDLE_TIMEOUT_MINUTES:-120}
+      SESSION_ABSOLUTE_LIFETIME_HOURS: ${SESSION_ABSOLUTE_LIFETIME_HOURS:-168}
+      SENSITIVE_IDLE_TIMEOUT_MINUTES: ${SENSITIVE_IDLE_TIMEOUT_MINUTES:-30}
+      SESSION_ROTATION_MINUTES: ${SESSION_ROTATION_MINUTES:-15}
+      EMAIL_VERIFICATION_TTL_HOURS: ${EMAIL_VERIFICATION_TTL_HOURS:-24}
+      PASSWORD_RESET_TTL_MINUTES: ${PASSWORD_RESET_TTL_MINUTES:-60}
+      INVITATION_TTL_HOURS: ${INVITATION_TTL_HOURS:-72}
+      # Limites anti-automatisation (valeurs de développement plus larges : tests e2e répétés).
+      REGISTER_PER_HOUR_PER_IP: ${REGISTER_PER_HOUR_PER_IP:-50}
+      LOGIN_PER_10MIN_PER_IP: ${LOGIN_PER_10MIN_PER_IP:-100}
+      EMAIL_ACTIONS_PER_HOUR_PER_IP: ${EMAIL_ACTIONS_PER_HOUR_PER_IP:-50}
     ports:
       - "127.0.0.1:${API_PORT:-28000}:8000"
 
-  web:                                      # Interface Next.js (Phase 1.2)
+  web:                                      # Interface Next.js (Phases 1.2 à 2.1)
     build:
       context: ..
       dockerfile: apps/web/Dockerfile
@@ -103,6 +126,8 @@ services:
         condition: service_healthy
     environment:
       API_INTERNAL_URL: http://api:8000      # réseau interne Docker : le navigateur ne voit jamais l'API
+      # Cookie de session « Secure » : true en production (HTTPS) ; false en local (http://web:3000 en e2e).
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/fr').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s

@@ -57,7 +57,11 @@ def test_openapi_lists_phase_1_2_routes_read_only(client):
         "/ready",
     ):
         assert p in paths, p
-    assert all(method == "get" for item in paths.values() for method in item), "API en lecture seule"
+    # Référentiels et catalogue restent en lecture seule ; les écritures n'existent que pour l'identité (2.1).
+    writable = ("/api/v1/auth/", "/api/v1/me", "/api/v1/invitations", "/api/v1/organizations/", "/api/v1/admin/")
+    for path, item in paths.items():
+        if not path.startswith(writable):
+            assert set(item) == {"get"}, f"{path} doit rester en lecture seule"
     assert client.post("/api/v1/programs").status_code == 405
 
 
@@ -315,7 +319,9 @@ def test_unknown_route_and_method_are_generic(client):
 
 
 def test_docs_hidden_in_production(settings):
-    prod = Settings(app_env="production", cors_origins=["https://nurselearn.example"])  # type: ignore[call-arg]
+    prod = Settings(  # type: ignore[call-arg]
+        app_env="production", cors_origins=["https://nurselearn.example"], token_hash_key="k" * 40
+    )
     with TestClient(create_app(prod)) as c:
         assert c.get("/docs").status_code == 404
         assert c.get("/openapi.json").status_code == 404
@@ -324,7 +330,14 @@ def test_docs_hidden_in_production(settings):
 
 def test_production_rejects_wildcard_cors():
     with pytest.raises(ValueError):
-        Settings(app_env="production", cors_origins=["*"], database_url="postgresql://x@y/z")  # type: ignore[call-arg]
+        Settings(  # type: ignore[call-arg]
+            app_env="production", cors_origins=["*"], database_url="postgresql://x@y/z", token_hash_key="k" * 40
+        )
+
+
+def test_production_requires_token_hash_key():
+    with pytest.raises(ValueError):
+        Settings(app_env="production", cors_origins=["https://x.example"], database_url="postgresql://x@y/z")  # type: ignore[call-arg]
 
 
 def test_cors_allows_only_configured_origin(client):

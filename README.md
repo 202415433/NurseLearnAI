@@ -11,7 +11,9 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 | 1 — Analyse et architecture | ✅ livrée — [`docs/VALIDATION-PHASE1.md`](docs/VALIDATION-PHASE1.md) |
 | 1.1 — Validation technique | ✅ 30/30 sur Windows, CI 4/4, intégrée dans `main` (#1) — [`docs/VALIDATION-PHASE1.1.md`](docs/VALIDATION-PHASE1.1.md), décision : [`docs/PHASE2-READINESS.md`](docs/PHASE2-READINESS.md) |
 | 1.2 — API publique et parcours web | ✅ 52/52 sur Windows, CI 6/6, intégrée dans `main` (#2) — [`docs/VALIDATION-PHASE1.2.md`](docs/VALIDATION-PHASE1.2.md) · [API](docs/API-REFERENCE.md) · [interface](docs/FRONTEND-ARCHITECTURE.md) |
-| 2 — MVP fonctionnel | ⏸️ GO technique, en attente de votre validation — plan : [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
+| 2.0 — Sécurité et qualité | ✅ intégrée dans `main` (#4) — [`docs/VALIDATION-PHASE2.0.md`](docs/VALIDATION-PHASE2.0.md) · [audit](docs/SECURITY-AUDIT-PHASE2.0.md) |
+| 2.1 — Identité et accès | 🧪 développée sur `phase-2.1-identity-access`, validation locale en cours — [`docs/VALIDATION-PHASE2.1.md`](docs/VALIDATION-PHASE2.1.md) · [sécurité](docs/SECURITY-IDENTITY-PHASE2.1.md) · [préparation 2.2](docs/PHASE2.2-READINESS.md) |
+| 2.2 à 2.5 | 🗓️ planifiées — [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
 | 3 à 7 | 🗓️ planifiées — voir [`docs/06-roadmap.md`](docs/06-roadmap.md) |
 
 ## Documentation
@@ -68,6 +70,29 @@ powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase1.2.ps1   # val
 ```
 
 Interfaces locales : console S3 (RustFS) http://localhost:9001/rustfs/console/ · Mailpit http://localhost:8025
+
+### Comptes et accès (Phase 2.1)
+
+```powershell
+docker compose up --build -d
+# 1. Créer un compte étudiant :          http://localhost:3000/fr/inscription
+# 2. Lire le courriel de vérification :  http://localhost:8025 (Mailpit, aucun envoi réel)
+# 3. Se connecter, gérer son compte :    http://localhost:3000/fr/compte
+# Exploitation (rôles hors inscription publique, journalisés) :
+docker compose exec api python -m app.cli create-organization mon-ecole "Mon école" --kind school
+docker compose exec api python -m app.cli grant-platform-admin personne@example.org   # compte déjà vérifié
+powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.1.ps1          # validation complète Phase 2.1
+```
+
+Seul le rôle étudiant s'obtient par inscription. Les rôles formateur, relecteur médical et administrateur d'établissement s'obtiennent uniquement par invitation (page « Mon compte » → « Gérer les invitations ») ; un administrateur d'établissement ne peut inviter que des formateurs dans son établissement. En production, `TOKEN_HASH_KEY` (≥ 32 caractères) et `SESSION_COOKIE_SECURE=true` sont obligatoires.
+
+### Tests
+
+```powershell
+.\scripts\test-db.ps1                                     # schéma, contraintes, migrations (PostgreSQL)
+cd services\api; python -m pytest -q tests                 # API (PostgreSQL + Redis ; Mailpit si MAILPIT_URL)
+cd apps\web; npm test; npm run test:e2e                    # Vitest ; Playwright + axe (MAILPIT_URL pour l'identité)
+```
 
 ## Principes non négociables
 
