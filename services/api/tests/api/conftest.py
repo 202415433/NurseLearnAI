@@ -5,7 +5,6 @@ Variables : DATABASE_URL (obligatoire), REDIS_URL (facultatif). Voir le job CI �
 
 from __future__ import annotations
 
-import json
 import os
 import uuid
 from collections.abc import Iterator
@@ -152,26 +151,48 @@ def published_demo(sync_engine: Engine) -> Iterator[dict[str, str]]:
                 {"v": vid},
             )
 
-        def manifest(fr: object) -> str:
-            lesson = {
-                "lesson_id": str(lessons[0]),
-                "position": 0,
-                "versions": {"fr": str(fr), "en": str(versions["en"])},
-            }
-            return json.dumps(
-                {"modules": [{"module_id": str(mod), "position": 0, "required": True, "lessons": [lesson]}]}
-            )
-
-        # Programme public (Québec) : version propre à la juridiction ; programme privé : version commune.
+        # Une version de module par programme (0006, ADR-0010) : le programme public (Québec) cite la
+        # version propre à la juridiction, le programme privé la version commune.
         releases = []
         for program, fr in ((prog, versions["qc"]), (private, versions["fr"])):
+            mv = c.execute(
+                text(
+                    "INSERT INTO module_versions (module_id, version_no, author_id) "
+                    "SELECT :m, coalesce(max(version_no), 0) + 1, :a FROM module_versions WHERE module_id = :m "
+                    "RETURNING id"
+                ),
+                {"m": mod, "a": author},
+            ).scalar()
+            c.execute(
+                text(
+                    "INSERT INTO module_version_lessons (module_version_id, module_id, lesson_id, position) "
+                    "VALUES (:mv, :m, :l, 0)"
+                ),
+                {"mv": mv, "m": mod, "l": lessons[0]},
+            )
+            for loc, vid in (("fr", fr), ("en", versions["en"])):
+                c.execute(
+                    text(
+                        "INSERT INTO module_version_lesson_versions (module_version_id, lesson_id, locale, "
+                        "lesson_version_id) VALUES (:mv, :l, :loc, :v)"
+                    ),
+                    {"mv": mv, "l": lessons[0], "loc": loc, "v": vid},
+                )
+            act(author, "UPDATE module_versions SET status = 'medical_review' WHERE id = :x", {"x": mv})
+            act(reviewer, "UPDATE module_versions SET status = 'approved' WHERE id = :x", {"x": mv})
             rid = c.execute(
                 text(
-                    "INSERT INTO program_releases (program_id, release_no, manifest, author_id) "
-                    "VALUES (:p, 1, CAST(:m AS jsonb), :a) RETURNING id"
+                    "INSERT INTO program_releases (program_id, release_no, author_id) VALUES (:p, 1, :a) RETURNING id"
                 ),
-                {"p": program, "m": manifest(fr), "a": author},
+                {"p": program, "a": author},
             ).scalar()
+            c.execute(
+                text(
+                    "INSERT INTO program_release_modules (release_id, module_id, module_version_id, position) "
+                    "VALUES (:r, :m, :mv, 0)"
+                ),
+                {"r": rid, "m": mod, "mv": mv},
+            )
             act(author, "UPDATE program_releases SET status = 'medical_review' WHERE id = :r", {"r": rid})
             act(reviewer, "UPDATE program_releases SET status = 'approved' WHERE id = :r", {"r": rid})
             act(reviewer, "UPDATE program_releases SET status = 'published' WHERE id = :r", {"r": rid})

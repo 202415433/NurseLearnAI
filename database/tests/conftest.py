@@ -66,19 +66,47 @@ class Db:
         raise AssertionError(f"La requête aurait dû être rejetée :\n{query}")
 
 
-@pytest.fixture(scope="session")
-def db():
-    d = Db(f"nl_schema_test_{os.getpid()}")
+# Migrations appliquées dans l'ordre (0002 seulement si pgvector est disponible).
+MIGRATIONS = [
+    "0001_core",
+    "0002_pgvector",
+    "0003_business_rules",  # indépendante des objets de 0002
+    "0004_identity",
+    "0005_learning_engine",
+    "0006_independent_program_versions",
+]
+
+
+def build_db(name: str, upto: str = MIGRATIONS[-1], seeds: bool = True) -> Db:
+    """Crée une base jetable migrée jusqu'à `upto` (incluse), puis charge les données de référence."""
+    d = Db(name)
     d.admin(f"DROP DATABASE IF EXISTS {d.name}")
     d.admin(f"CREATE DATABASE {d.name}")
-    d.file(SCHEMA / "0001_core.sql")
-    if d.sql("SELECT count(*) FROM pg_available_extensions WHERE name = 'vector'") == "1":
-        d.file(SCHEMA / "0002_pgvector.sql")
-    d.file(SCHEMA / "0003_business_rules.sql")  # indépendante des objets de 0002
-    d.file(SCHEMA / "0004_identity.sql")
-    d.file(SCHEMA / "0005_learning_engine.sql")
-    for seed in sorted(SEEDS.glob("*.sql")):
-        d.file(seed)
+    for migration in MIGRATIONS[: MIGRATIONS.index(upto) + 1]:
+        if (
+            migration == "0002_pgvector"
+            and d.sql("SELECT count(*) FROM pg_available_extensions WHERE name = 'vector'") != "1"
+        ):
+            continue
+        d.file(SCHEMA / f"{migration}.sql")
+    if seeds:
+        for seed in sorted(SEEDS.glob("*.sql")):
+            d.file(seed)
+    return d
+
+
+@pytest.fixture(scope="session")
+def db():
+    """Base au dernier état du schéma."""
+    d = build_db(f"nl_schema_test_{os.getpid()}")
+    yield d
+    d.admin(f"DROP DATABASE IF EXISTS {d.name} WITH (FORCE)")
+
+
+@pytest.fixture(scope="session")
+def db_0005():
+    """Base arrêtée à la migration 0005 : non-régression des éditions historiques (manifeste JSON)."""
+    d = build_db(f"nl_schema_0005_{os.getpid()}", upto="0005_learning_engine")
     yield d
     d.admin(f"DROP DATABASE IF EXISTS {d.name} WITH (FORCE)")
 

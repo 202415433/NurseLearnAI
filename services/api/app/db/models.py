@@ -5,6 +5,7 @@ projection en lecture. Le test `test_models_match_schema` vérifie que chaque
 colonne déclarée ici existe en base avec un type et une nullabilité compatibles.
 Phase 2.1 : tables d'identité et d'accès (ADR-0007), y compris celles de la migration 0004.
 Phase 2.2.1 : éditions, inscriptions, historique et décisions éditoriales (migration 0005, ADR-0009).
+Étape 2.2.2-a : versions de modules indépendantes par édition (migration 0006, ADR-0010).
 Les autres tables seront modélisées par les lots qui les utilisent.
 """
 
@@ -295,6 +296,7 @@ class ProgramRelease(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     content_sha256: Mapped[str | None] = mapped_column(String(64))
+    structure: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -328,6 +330,7 @@ class LearningEvent(Base):
     module_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("modules.id"))
     lesson_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("lessons.id"))
     lesson_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("lesson_versions.id"))
+    module_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("module_versions.id"))
     block_id: Mapped[str | None] = mapped_column(Text)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -347,3 +350,60 @@ class EditorialDecision(Base):
     content_sha256: Mapped[str | None] = mapped_column(String(64))
     comment: Mapped[str | None] = mapped_column(Text)
     decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+# --------------------------------------------------------------------------------------------
+# Versions de modules indépendantes par édition (étape 2.2.2-a, migration 0006, ADR-0010).
+# Les liens édition → version de module → leçon → version de leçon sont garantis par des clés
+# étrangères composées ; le workflow et l'immuabilité par des déclencheurs.
+# --------------------------------------------------------------------------------------------
+class ModuleVersion(Base):
+    __tablename__ = "module_versions"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    module_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("modules.id"))
+    version_no: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(Text)
+    change_summary: Mapped[str | None] = mapped_column(Text)
+    author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    content_sha256: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ModuleVersionLesson(Base):
+    __tablename__ = "module_version_lessons"
+    module_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    lesson_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    module_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    position: Mapped[int] = mapped_column(Integer)
+    required: Mapped[bool] = mapped_column(Boolean)
+
+
+class ModuleVersionLessonVersion(Base):
+    __tablename__ = "module_version_lesson_versions"
+    module_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    lesson_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    locale: Mapped[str] = mapped_column(Text, primary_key=True)
+    lesson_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+
+
+class ProgramReleaseModule(Base):
+    __tablename__ = "program_release_modules"
+    release_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    module_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    module_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    position: Mapped[int] = mapped_column(Integer)
+    required: Mapped[bool] = mapped_column(Boolean)
+
+
+class ProgramReleasePrerequisite(Base):
+    __tablename__ = "program_release_prerequisites"
+    release_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    module_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    prerequisite_module_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)

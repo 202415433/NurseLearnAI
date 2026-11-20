@@ -14,7 +14,8 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 | 2.0 — Sécurité et qualité | ✅ intégrée dans `main` (#4) — [`docs/VALIDATION-PHASE2.0.md`](docs/VALIDATION-PHASE2.0.md) · [audit](docs/SECURITY-AUDIT-PHASE2.0.md) |
 | 2.1 — Identité et accès | ✅ validée (42/42 + 52/52), CI 7/7, PR #6 — [`docs/VALIDATION-PHASE2.1.md`](docs/VALIDATION-PHASE2.1.md) · [sécurité](docs/SECURITY-IDENTITY-PHASE2.1.md) · [préparation 2.2](docs/PHASE2.2-READINESS.md) |
 | 2.2.1 — Modèle pédagogique et règles éditoriales | ✅ intégré dans `main` (#8), CI 7/7 — [`docs/VALIDATION-PHASE2.2.1.md`](docs/VALIDATION-PHASE2.2.1.md) · [ADR-0009](docs/adr/0009-editions-figees-et-workflow-editorial.md) · [préparation 2.2.2](docs/PHASE2.2.2-READINESS.md) |
-| 2.2.2 — API éditoriale (+ versions de modules, ADR-0010) | 📝 plan proposé — [`docs/PHASE2.2.2-PLAN.md`](docs/PHASE2.2.2-PLAN.md) |
+| 2.2.2-a — Versions de modules indépendantes (migration 0006, ADR-0010) | 🧪 développée sur `phase-2.2.2a-versioning-migration`, validation en cours — [`docs/VALIDATION-PHASE2.2.2A.md`](docs/VALIDATION-PHASE2.2.2A.md) · [préparation 2.2.2-b](docs/PHASE2.2.2B-READINESS.md) |
+| 2.2.2-b / c — API éditoriale, catalogue | 📝 plan proposé — [`docs/PHASE2.2.2-PLAN.md`](docs/PHASE2.2.2-PLAN.md) |
 | 2.2.3 à 2.5 | 🗓️ planifiées — [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
 | 3 à 7 | 🗓️ planifiées — voir [`docs/06-roadmap.md`](docs/06-roadmap.md) |
 
@@ -86,6 +87,7 @@ docker compose exec api python -m app.cli create-organization mon-ecole "Mon éc
 docker compose exec api python -m app.cli grant-platform-admin personne@example.org   # compte déjà vérifié
 powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.1.ps1          # validation complète Phase 2.1
 powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.1.ps1        # sous-lot 2.2.1 (inclut 2.1, 2.0, 1.2)
+powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.2a.ps1       # étape 2.2.2-a (inclut 2.2.1 et antérieures)
 ```
 
 Seul le rôle étudiant s'obtient par inscription. Les rôles formateur, relecteur médical et administrateur d'établissement s'obtiennent uniquement par invitation (page « Mon compte » → « Gérer les invitations ») ; un administrateur d'établissement ne peut inviter que des formateurs dans son établissement. En production, `TOKEN_HASH_KEY` (≥ 32 caractères) et `SESSION_COOKIE_SECURE=true` sont obligatoires.

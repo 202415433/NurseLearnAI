@@ -1,6 +1,6 @@
 # ADR-0010 — Versionnement indépendant des modules par édition de programme (D12)
 
-**Statut** : décision **approuvée** le 2026-11-19 (D12) ; mise en œuvre **proposée** pour la migration additive `0006_module_versions` (non développée).
+**Statut** : décision **approuvée** le 2026-11-19 (D12) ; mise en œuvre : migration additive `0006_independent_program_versions` (étape 2.2.2-a, [validation](../VALIDATION-PHASE2.2.2A.md)).
 **Remplace** les points 6 et 8 d'[ADR-0009](0009-editions-figees-et-workflow-editorial.md) pour toute nouvelle édition ; les autres points d'ADR-0009 restent en vigueur.
 
 ## Contexte
@@ -21,7 +21,7 @@ Avec la migration `0005`, une édition (`program_releases.manifest`, JSON) cite 
 ## Décision
 
 1. **Version de module** (`module_versions`) : instantané immuable d'un module — liste ordonnée de ses leçons, de leur caractère obligatoire et de la **version exacte** de chaque leçon par langue. Numérotation continue par module ; même workflow à cinq états que les leçons (`draft → medical_review → approved → published → archived`), même acteur déclaré, mêmes contrôles d'habilitation dans la portée de l'établissement du module, auteur ≠ relecteur, empreinte SHA-256.
-2. **Liens vérifiés par clés étrangères** : `module_version_lessons (module_version_id, module_id, lesson_id, locale, lesson_version_id, position, required)` avec clés composées vers `module_versions (id, module_id)`, `lessons (id, module_id)` et `lesson_versions (id, lesson_id)` — une leçon d'un autre module ou une version d'une autre leçon est impossible par construction ; langue et juridiction contrôlées par déclencheur.
+2. **Liens vérifiés par clés étrangères** : `module_version_lessons (module_version_id, module_id, lesson_id, position, required)` et `module_version_lesson_versions (module_version_id, lesson_id, locale, lesson_version_id)` (mise en œuvre normalisée en deux tables), avec clés composées vers `module_versions (id, module_id)`, `lessons (id, module_id)` et `lesson_versions (id, lesson_id, locale)` — une leçon d'un autre module, une version d'une autre leçon ou d'une autre langue est impossible par construction ; la juridiction est contrôlée par déclencheur à l'échelle de l'édition.
 3. **Édition = liste explicite de versions de modules** : `program_release_modules (release_id, module_version_id, position, required)` et `program_release_prerequisites`. Une édition ne cite jamais « la dernière version » : uniquement des identifiants de versions immuables.
 4. **Indépendance entre programmes** : deux éditions peuvent citer des versions différentes d'un même module ; publier une édition ne modifie ni n'archive rien d'un autre programme. Une version de leçon ou de module n'est archivable que si **aucune** édition publiée ne la cite encore.
 5. **Aucun changement implicite** : l'inscription reste sur son édition initiale ; seule une action explicite la fait passer à une édition publiée plus récente du même programme (règle 0005 conservée) ; aucune édition ne « suit » automatiquement une nouvelle version de module.
