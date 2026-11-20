@@ -24,9 +24,9 @@
 
 | # | Sujet | État | Bloquant pour 2.2.2 ? |
 |---|---|---|---|
-| D2 | Code `medical_review` à la place de `in_review` | Appliqué en 2.2.1 (imposé par les états approuvés) — confirmation formelle souhaitée | Non |
+| D2 | Code `medical_review` à la place de `in_review` | ✅ **Confirmé** le 2026-11-19 (quiz et simulations inchangés jusqu'au lot 2.3) | — |
 | D11 | ADR-0009 | Rédigé, statut « proposé » | Non (à approuver) |
-| D12 | Modules partagés entre programmes : publication refusée si une version remplacée reste suivie par une autre édition publiée | Comportement prudent appliqué | **Oui pour l'ergonomie** : choisir entre coordination des éditions ou versions par programme |
+| D12 | Modules partagés entre programmes | ✅ **Décidé** : versionnement indépendant des modules par édition ([ADR-0010](adr/0010-versions-de-modules-par-edition.md)) ; migration 0006 à développer en tête de 2.2.2 | Oui : prérequis de l'API (étape 2.2.2-a) |
 | D13 | Statuts `programs`/`modules` : gardés à trois valeurs, dérivés des éditions (la relecture porte sur les versions et les éditions) | Appliqué (écart au plan § 1.2, justifié dans ADR-0009) | Non |
 | D14 | Séparation des rôles PostgreSQL (rôle applicatif sans désactivation des déclencheurs) | Prévu au lot 2.5 | Non (requis avant production) |
 | D1, D4–D10 | Voir le plan 2.2 | Non confirmées | Non pour 2.2.2 ; D7 bloque 2.2.3, D9 et D10 bloquent toute publication réelle |
@@ -34,8 +34,8 @@
 ## 4. Prérequis
 
 1. ✅ PR #6 (Phase 2.1) et PR #7 (plan 2.2) fusionnées dans `main` (`9671890`).
-2. ✅ Sous-lot 2.2.1 validé sur Windows (16/16, pytest 192, non-régression 42/42) ; reste à le pousser et le fusionner sur votre autorisation.
-3. Réponse à D12.
+2. ✅ Sous-lot 2.2.1 validé sur Windows (16/16, pytest 192), CI 14/14, fusionné dans `main` (#8, `7e4dbd7`).
+3. ✅ D12 décidé ; plan technique : [PHASE2.2.2-PLAN.md](PHASE2.2.2-PLAN.md).
 
 ## 5. Recommandation
 

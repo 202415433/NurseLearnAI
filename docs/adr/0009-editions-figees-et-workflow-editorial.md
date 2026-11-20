@@ -1,6 +1,8 @@
 # ADR-0009 — Éditions de programme figées et workflow éditorial à cinq états
 
-**Statut** : proposé · 2026-11-19 (sous-lot 2.2.1, migration `0005_learning_engine`) — à approuver avec le plan du lot 2.2 (décision D11).
+**Statut** : proposé · 2026-11-19 (sous-lot 2.2.1, migration `0005_learning_engine`, intégré dans `main` par #8) — à approuver avec le plan du lot 2.2 (décision D11).
+
+**Mises à jour** : décision D2 (`medical_review` remplace `in_review` pour les leçons, modules et programmes ; quiz et simulations inchangés) **confirmée** le 2026-11-19. Points 6 et 8 remplacés pour les nouvelles éditions par [ADR-0010](0010-versions-de-modules-par-edition.md) (D12, versions de modules par édition).
 
 ## Contexte
 
