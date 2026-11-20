@@ -88,7 +88,8 @@ function Psql([string]$sql) { docker compose exec -T postgres psql -U $PGU -d $P
 Log "NurseLearn AI — validation Phase 2.1 — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_phase_2_1" ($branch -eq "phase-2.1-identity-access") $branch
+# Branche 2.1 ou ultérieure : le script sert aussi de non-régression aux sous-lots suivants.
+Result "branche_phase_2_1_ou_ulterieure" ($branch -match '^phase-2\.(1-identity-access|2\.)' -or $branch -eq "main") $branch
 
 # -----------------------------------------------------------------------------
 # 1. package-lock.json aligné sur package.json
@@ -157,7 +158,7 @@ if (-not $reg) {
 # 5. Contrôles Phase 2.1 sur la pile démarrée
 # -----------------------------------------------------------------------------
 $rev = (Psql "SELECT version_num FROM alembic_version") -join ""
-Result "migration_0004_identity_en_tete" ($rev -eq "0004_identity") $rev
+Result "migration_0004_identity_appliquee" ($rev -match '^000[4-9]_') $rev
 $r = Run "Vérification du schéma (database/checks/verify_head.sql)" {
     Get-Content "$root\database\checks\verify_head.sql" -Raw | docker compose exec -T postgres psql -U $PGU -d $PGDB -X -q -v ON_ERROR_STOP=1
 }

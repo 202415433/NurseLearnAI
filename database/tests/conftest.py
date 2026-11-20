@@ -76,6 +76,7 @@ def db():
         d.file(SCHEMA / "0002_pgvector.sql")
     d.file(SCHEMA / "0003_business_rules.sql")  # indépendante des objets de 0002
     d.file(SCHEMA / "0004_identity.sql")
+    d.file(SCHEMA / "0005_learning_engine.sql")
     for seed in sorted(SEEDS.glob("*.sql")):
         d.file(seed)
     yield d

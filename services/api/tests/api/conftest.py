@@ -5,6 +5,7 @@ Variables : DATABASE_URL (obligatoire), REDIS_URL (facultatif). Voir le job CI �
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from collections.abc import Iterator
@@ -43,7 +44,7 @@ def sync_engine(settings: Settings) -> Iterator[Engine]:
 
 @pytest.fixture
 def published_demo(sync_engine: Engine) -> Iterator[dict[str, str]]:
-    """Contenu PUBLIÉ fictif et non médical, créé puis supprimé, pour éprouver le chemin de publication.
+    """Contenu PUBLIÉ fictif et non médical, mené par le workflow éditorial complet, puis archivé.
 
     Il passe par toutes les règles de la base : relecteur habilité (rôle medical_reviewer),
     distinct de l'auteur, date de relecture, date de prochaine révision.
@@ -77,10 +78,17 @@ def published_demo(sync_engine: Engine) -> Iterator[dict[str, str]]:
         ).scalar()
         spec = c.execute(text("SELECT id FROM specialties WHERE code='care_assistant_core'")).scalar()
         qc = c.execute(text("SELECT id FROM jurisdictions WHERE code='CA-QC'")).scalar()
+        # Depuis 0005, rien ne s'insère « publié » : contenus créés en brouillon puis menés par le
+        # workflow éditorial (soumission par l'auteur, approbation et publication par le relecteur).
+        c.execute(text("SELECT set_config('nl.role_grant_bypass', 'on', true)"))
+        c.execute(
+            text("INSERT INTO user_roles (user_id, role_id) SELECT :u, id FROM roles WHERE code='instructor'"),
+            {"u": author},
+        )
         prog = c.execute(
             text(
-                "INSERT INTO programs (code, profession_id, specialty_id, title_i18n, level, access_tier, status) "
-                "VALUES (:c, :p, :s, CAST(:t AS jsonb), 'beginner', 'free', 'published') RETURNING id"
+                "INSERT INTO programs (code, profession_id, specialty_id, title_i18n, level, access_tier, is_medical) "
+                "VALUES (:c, :p, :s, CAST(:t AS jsonb), 'beginner', 'free', false) RETURNING id"
             ),
             {
                 "c": ids["program"],
@@ -89,17 +97,17 @@ def published_demo(sync_engine: Engine) -> Iterator[dict[str, str]]:
                 "t": '{"fr":"Programme de démonstration (test)","en":"Demo program (test)"}',
             },
         ).scalar()
-        c.execute(
+        private = c.execute(
             text(
-                "INSERT INTO programs (code, profession_id, organization_id, title_i18n, level, access_tier, status) "
-                "VALUES (:c, :p, :o, CAST(:t AS jsonb), 'beginner', 'organization', 'published')"
+                "INSERT INTO programs (code, profession_id, organization_id, title_i18n, level, access_tier, "
+                "is_medical) VALUES (:c, :p, :o, CAST(:t AS jsonb), 'beginner', 'organization', false) RETURNING id"
             ),
             {"c": ids["private"], "p": prof, "o": org, "t": '{"fr":"Programme privé (test)"}'},
-        )
+        ).scalar()
         mod = c.execute(
             text(
-                "INSERT INTO modules (code, specialty_id, level, title_i18n, estimated_minutes, access_tier, status) "
-                "VALUES (:c, :s, 'beginner', CAST(:t AS jsonb), 15, 'free', 'published') RETURNING id"
+                "INSERT INTO modules (code, specialty_id, level, title_i18n, estimated_minutes, access_tier) "
+                "VALUES (:c, :s, 'beginner', CAST(:t AS jsonb), 15, 'free') RETURNING id"
             ),
             {"c": ids["module"], "s": spec, "t": '{"fr":"Module de démonstration (test)","en":"Demo module (test)"}'},
         ).scalar()
@@ -117,24 +125,57 @@ def published_demo(sync_engine: Engine) -> Iterator[dict[str, str]]:
                     {"m": mod, "c": code, "p": pos},
                 ).scalar()
             )
+        body = '{"blocks":[{"id":"b1","type":"paragraph","text":"Contenu fictif non médical"}]}'
         version = (
-            "INSERT INTO lesson_versions (lesson_id, locale, jurisdiction_id, version_no, title, body, status, "
-            "author_id, reviewed_by, reviewed_at, published_at, next_review_due) VALUES "
-            "(:l, :loc, :j, 1, :t, CAST('{\"blocks\":[]}' AS jsonb), 'published', :a, :r, now(), now(), "
-            "current_date + 365)"
+            "INSERT INTO lesson_versions (lesson_id, locale, jurisdiction_id, version_no, title, body, author_id) "
+            "VALUES (:l, :loc, :j, 1, :t, CAST(:b AS jsonb), :a) RETURNING id"
         )
-        c.execute(
-            text(version),
-            {"l": lessons[0], "loc": "fr", "j": None, "t": "Leçon commune (test)", "a": author, "r": reviewer},
-        )
-        c.execute(
-            text(version),
-            {"l": lessons[0], "loc": "en", "j": None, "t": "Common lesson (test)", "a": author, "r": reviewer},
-        )
-        c.execute(
-            text(version),
-            {"l": lessons[0], "loc": "fr", "j": qc, "t": "Leçon Québec (test)", "a": author, "r": reviewer},
-        )
+        versions = {}
+        for key, loc, jur, title in (
+            ("fr", "fr", None, "Leçon commune (test)"),
+            ("en", "en", None, "Common lesson (test)"),
+            ("qc", "fr", qc, "Leçon Québec (test)"),
+        ):
+            versions[key] = c.execute(
+                text(version), {"l": lessons[0], "loc": loc, "j": jur, "t": title, "b": body, "a": author}
+            ).scalar()
+
+        def act(actor: object, sql: str, params: dict) -> None:
+            c.execute(text("SELECT set_config('nl.actor_id', :a, true)"), {"a": str(actor)})
+            c.execute(text(sql), params)
+
+        for vid in versions.values():
+            act(author, "UPDATE lesson_versions SET status = 'medical_review' WHERE id = :v", {"v": vid})
+            act(
+                reviewer,
+                "UPDATE lesson_versions SET status = 'approved', next_review_due = current_date + 365 WHERE id = :v",
+                {"v": vid},
+            )
+
+        def manifest(fr: object) -> str:
+            lesson = {
+                "lesson_id": str(lessons[0]),
+                "position": 0,
+                "versions": {"fr": str(fr), "en": str(versions["en"])},
+            }
+            return json.dumps(
+                {"modules": [{"module_id": str(mod), "position": 0, "required": True, "lessons": [lesson]}]}
+            )
+
+        # Programme public (Québec) : version propre à la juridiction ; programme privé : version commune.
+        releases = []
+        for program, fr in ((prog, versions["qc"]), (private, versions["fr"])):
+            rid = c.execute(
+                text(
+                    "INSERT INTO program_releases (program_id, release_no, manifest, author_id) "
+                    "VALUES (:p, 1, CAST(:m AS jsonb), :a) RETURNING id"
+                ),
+                {"p": program, "m": manifest(fr), "a": author},
+            ).scalar()
+            act(author, "UPDATE program_releases SET status = 'medical_review' WHERE id = :r", {"r": rid})
+            act(reviewer, "UPDATE program_releases SET status = 'approved' WHERE id = :r", {"r": rid})
+            act(reviewer, "UPDATE program_releases SET status = 'published' WHERE id = :r", {"r": rid})
+            releases.append(rid)
         c.execute(
             text(
                 "INSERT INTO lesson_versions (lesson_id, locale, version_no, title, body) "
@@ -143,8 +184,9 @@ def published_demo(sync_engine: Engine) -> Iterator[dict[str, str]]:
             {"l": lessons[1]},
         )
     yield ids
+    # L'historique éditorial est immuable : les éditions sont archivées (le programme et le module
+    # sortent du catalogue) au lieu d'être supprimées. Les codes de test sont uniques par exécution.
     with sync_engine.begin() as c:
-        c.execute(text("DELETE FROM programs WHERE code IN (:a, :b)"), {"a": ids["program"], "b": ids["private"]})
-        c.execute(text("DELETE FROM modules WHERE code = :m"), {"m": ids["module"]})
-        c.execute(text("DELETE FROM organizations WHERE slug = :s"), {"s": f"org-{tag}"})
-        c.execute(text("DELETE FROM users WHERE email LIKE :e"), {"e": f"%-{tag}@example.test"})
+        c.execute(text("SELECT set_config('nl.actor_id', :a, true)"), {"a": str(reviewer)})
+        for rid in releases:
+            c.execute(text("UPDATE program_releases SET status = 'archived' WHERE id = :r"), {"r": rid})

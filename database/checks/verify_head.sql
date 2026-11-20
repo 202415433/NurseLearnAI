@@ -7,7 +7,7 @@ DECLARE
 BEGIN
   SELECT count(*) INTO n_tables FROM information_schema.tables
    WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'alembic_version';
-  IF n_tables <> 62 THEN RAISE EXCEPTION 'Attendu 62 tables (60 + invitations, one_time_tokens de 0004), trouvé %', n_tables; END IF;
+  IF n_tables <> 66 THEN RAISE EXCEPTION 'Attendu 66 tables (60 + 2 de 0004 + 4 de 0005), trouvé %', n_tables; END IF;
 
   SELECT count(*) INTO n_missing FROM unnest(ARRAY['users','roles','profiles','countries','jurisdictions','professions',
     'specialties','programs','modules','lessons','learning_objectives','competencies','learning_resources',
@@ -32,6 +32,10 @@ BEGIN
     RAISE EXCEPTION 'Migration 0003 non appliquée (nl_user_has_permission absente)'; END IF;
   IF to_regprocedure('nl_guard_role_grant()') IS NULL OR to_regclass('public.invitations') IS NULL THEN
     RAISE EXCEPTION 'Migration 0004 non appliquée (garde des rôles ou invitations absente)'; END IF;
+  IF to_regclass('public.program_releases') IS NULL OR to_regclass('public.editorial_decisions') IS NULL
+     OR to_regprocedure('nl_validate_release(uuid,jsonb,text,uuid)') IS NULL
+     OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_lesson_versions_status') THEN
+    RAISE EXCEPTION 'Migration 0005 non appliquée (éditions, journal éditorial ou états absents)'; END IF;
   SELECT count(*) INTO n_trg FROM pg_trigger WHERE NOT tgisinternal;
   SELECT count(*) INTO n_idx FROM pg_indexes WHERE schemaname = 'public';
 
