@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 
 from conftest import SCHEMA, SEEDS, Db, new_id
+from editorial import Editorial
 
 # Entités exigées au §14 -> table(s) correspondantes.
 REQUIRED_ENTITIES = {
@@ -150,40 +151,47 @@ def test_medical_reference_must_be_verifiable(db):
     )
 
 
-def test_lesson_cannot_be_published_without_review(db, make_lesson):
+def test_lesson_cannot_be_published_without_review(db, make_lesson, make_user, grant_role):
     lid = make_lesson()
-    assert (
-        "check"
-        in db.fails(
-            f"INSERT INTO lesson_versions (lesson_id, locale, version_no, title, body, status, published_at, next_review_due) "
-            f"VALUES ('{lid}', 'fr', 1, 'Leçon', '{LV_BODY}', 'published', now(), current_date + 365)"
-        ).lower()
+    # Publication directe à la création : refusée (0001 : relecteur requis ; 0005 : naissance en brouillon).
+    assert "brouillon" in db.fails(
+        f"INSERT INTO lesson_versions (lesson_id, locale, version_no, title, body, status, published_at, next_review_due) "
+        f"VALUES ('{lid}', 'fr', 1, 'Leçon', '{LV_BODY}', 'published', now(), current_date + 365)"
     )
+    # Publication d'un brouillon ou d'une version en relecture : transition interdite.
+    ed = Editorial(db)
+    author = make_user()
+    grant_role(author, "instructor")
+    vid = ed.lesson_version(lid, author)
+    assert "interdite" in ed.fails(author, f"UPDATE lesson_versions SET status = 'published' WHERE id = '{vid}'")
+    ed.submit(vid, author)
+    assert "interdite" in ed.fails(author, f"UPDATE lesson_versions SET status = 'published' WHERE id = '{vid}'")
 
 
 def test_author_cannot_review_own_lesson(db, make_lesson, make_user):
     lid, author = make_lesson(), make_user()
-    assert (
-        "check"
-        in db.fails(
-            f"INSERT INTO lesson_versions (lesson_id, locale, version_no, title, body, status, author_id, reviewed_by, reviewed_at) "
-            f"VALUES ('{lid}', 'fr', 1, 'Leçon', '{LV_BODY}', 'approved', '{author}', '{author}', now())"
-        ).lower()
+    # Contrainte d'origine (0001) toujours présente…
+    assert "reviewed_by <> author_id" in db.sql(
+        "SELECT string_agg(pg_get_constraintdef(oid), ' ') FROM pg_constraint WHERE conrelid = 'lesson_versions'::regclass"
+    )
+    # … et toute tentative de création déjà approuvée est refusée.
+    assert "brouillon" in db.fails(
+        f"INSERT INTO lesson_versions (lesson_id, locale, version_no, title, body, status, author_id, reviewed_by, reviewed_at) "
+        f"VALUES ('{lid}', 'fr', 1, 'Leçon', '{LV_BODY}', 'approved', '{author}', '{author}', now())"
     )
 
 
-def test_single_published_version_per_lesson_locale(db, make_lesson, make_user, make_reviewer):
+def test_single_published_version_per_lesson_locale(db, make_lesson, make_user, make_reviewer, grant_role):
     lid, author, reviewer = make_lesson(), make_user(), make_reviewer()
-    ins = (
-        "INSERT INTO lesson_versions (lesson_id, locale, version_no, title, body, status, author_id, reviewed_by, "
-        "reviewed_at, published_at, next_review_due) VALUES ('{l}', '{loc}', {v}, 'Leçon', '"
-        + LV_BODY.replace("{", "{{").replace("}", "}}")
-        + "', "
-        "'published', '{a}', '{r}', now(), now(), current_date + 365)"
-    )
-    db.sql(ins.format(l=lid, loc="fr", v=1, a=author, r=reviewer))
-    db.sql(ins.format(l=lid, loc="en", v=1, a=author, r=reviewer))  # autre langue : OK
-    assert "duplicate key" in db.fails(ins.format(l=lid, loc="fr", v=2, a=author, r=reviewer))
+    grant_role(author, "instructor")
+    ed = Editorial(db)
+    v1 = ed.approved_version(lid, author, reviewer, "fr")
+    en = ed.approved_version(lid, author, reviewer, "en")
+    v2 = ed.approved_version(lid, author, reviewer, "fr")
+    publish = "UPDATE lesson_versions SET status = 'published' WHERE id = '{v}'"
+    ed.run(reviewer, publish.format(v=v1))
+    ed.run(reviewer, publish.format(v=en))  # autre langue : OK
+    assert "duplicate key" in ed.fails(reviewer, publish.format(v=v2))
 
 
 def test_images_require_alt_text_and_videos_captions(db, make_lesson):

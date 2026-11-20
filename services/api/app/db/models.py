@@ -4,6 +4,7 @@ Le schéma fait foi (database/schema, ADR-0002) : ces modèles en sont une
 projection en lecture. Le test `test_models_match_schema` vérifie que chaque
 colonne déclarée ici existe en base avec un type et une nullabilité compatibles.
 Phase 2.1 : tables d'identité et d'accès (ADR-0007), y compris celles de la migration 0004.
+Phase 2.2.1 : éditions, inscriptions, historique et décisions éditoriales (migration 0005, ADR-0009).
 Les autres tables seront modélisées par les lots qui les utilisent.
 """
 
@@ -87,6 +88,7 @@ class Program(Base):
     level: Mapped[str] = mapped_column(Text)
     access_tier: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text)
+    is_medical: Mapped[bool] = mapped_column(Boolean)
 
 
 class Module(Base):
@@ -132,6 +134,12 @@ class LessonVersion(Base):
     status: Mapped[str] = mapped_column(Text)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     next_review_due: Mapped[date | None] = mapped_column(Date)
+    author_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    content_sha256: Mapped[str | None] = mapped_column(String(64))
 
 
 # --------------------------------------------------------------------------------------------
@@ -265,3 +273,77 @@ class AuditLog(Base):
     entity_id: Mapped[str | None] = mapped_column(Text)
     organization_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB)
+
+
+# --------------------------------------------------------------------------------------------
+# Moteur pédagogique (Phase 2.2.1, migration 0005) — les règles sont portées par la base :
+# états et transitions, auteur ≠ relecteur, immuabilité, idempotence, isolation.
+# --------------------------------------------------------------------------------------------
+class ProgramRelease(Base):
+    __tablename__ = "program_releases"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    program_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("programs.id"))
+    release_no: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(Text)
+    manifest: Mapped[dict] = mapped_column(JSONB)
+    change_summary: Mapped[str | None] = mapped_column(Text)
+    author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    content_sha256: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class Enrollment(Base):
+    __tablename__ = "enrollments"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    program_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("programs.id"))
+    release_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("program_releases.id"))
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"))
+    cohort_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    status: Mapped[str] = mapped_column(Text)
+    enrolled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_lesson_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("lessons.id"))
+    last_block_id: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class LearningEvent(Base):
+    __tablename__ = "learning_events"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    enrollment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("enrollments.id"))
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    release_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("program_releases.id"))
+    client_event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    event_type: Mapped[str] = mapped_column(Text)
+    module_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("modules.id"))
+    lesson_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("lessons.id"))
+    lesson_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("lesson_versions.id"))
+    block_id: Mapped[str | None] = mapped_column(Text)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    payload: Mapped[dict] = mapped_column(JSONB)
+
+
+class EditorialDecision(Base):
+    __tablename__ = "editorial_decisions"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    entity_type: Mapped[str] = mapped_column(Text)
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    from_status: Mapped[str] = mapped_column(Text)
+    to_status: Mapped[str] = mapped_column(Text)
+    decision: Mapped[str] = mapped_column(Text)
+    actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"))
+    content_sha256: Mapped[str | None] = mapped_column(String(64))
+    comment: Mapped[str | None] = mapped_column(Text)
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

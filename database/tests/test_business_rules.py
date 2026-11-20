@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from conftest import new_id
+from editorial import Editorial
 
 LV = '{"blocks":[]}'
 
@@ -61,18 +62,35 @@ def test_permission_function_respects_org_scope_and_account_status(db, make_user
 
 # --------------------------------------------------------------------------- relecture indépendante et habilitée
 def test_lesson_reviewer_must_hold_review_permission(db, make_lesson, make_user, make_reviewer, grant_role):
-    lid, author = make_lesson(), make_user()
-    random_user = make_user()
-    assert "non habilité" in db.fails(_lesson_version(db, lid, author, random_user))
+    # Depuis 0005, une version naît en brouillon et l'approbation est une transition déclarée par son acteur.
+    ed = Editorial(db)
+    author = make_user()
+    grant_role(author, "instructor")
+    vid = ed.lesson_version(make_lesson(), author)
+    ed.submit(vid, author)
+    approve = f"UPDATE lesson_versions SET status = 'approved', next_review_due = current_date + 365 WHERE id = '{vid}'"
+    assert "content:review" in ed.fails(make_user(), approve)
     instructor = make_user()
     grant_role(instructor, "instructor")
-    assert "non habilité" in db.fails(_lesson_version(db, lid, author, instructor))
-    db.sql(_lesson_version(db, lid, author, make_reviewer()))
+    assert "content:review" in ed.fails(instructor, approve)
+    ed.run(make_reviewer(), approve)
+    # Écriture directe de reviewed_by : refusée (seule la transition d'approbation le renseigne).
+    v2 = ed.lesson_version(make_lesson(), author)
+    assert "trace de relecture" in db.fails(
+        f"UPDATE lesson_versions SET reviewed_by = '{make_user()}' WHERE id = '{v2}'"
+    )
 
 
-def test_reviewer_cannot_review_own_content_even_if_habilitated(db, make_lesson, make_reviewer):
-    lid, reviewer = make_lesson(), make_reviewer()
-    assert "check" in db.fails(_lesson_version(db, lid, reviewer, reviewer)).lower()
+def test_reviewer_cannot_review_own_content_even_if_habilitated(db, make_lesson, make_reviewer, grant_role):
+    ed = Editorial(db)
+    reviewer = make_reviewer()
+    grant_role(reviewer, "instructor")
+    vid = ed.lesson_version(make_lesson(), reviewer)
+    ed.submit(vid, reviewer)
+    assert "Auto-approbation interdite" in ed.fails(
+        reviewer,
+        f"UPDATE lesson_versions SET status = 'approved', next_review_due = current_date + 365 WHERE id = '{vid}'",
+    )
 
 
 def test_question_and_simulation_reviewers_are_checked(db, make_user, make_reviewer, specialty_id):
