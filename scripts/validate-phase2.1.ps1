@@ -225,7 +225,7 @@ $r = Run "CLI : python -m app.cli create-organization" {
 Result "cli_creation_etablissement" ($r.Code -eq 0)
 
 # Journal d'audit : événements présents, aucun secret.
-$actions = (Psql "SELECT string_agg(DISTINCT action, ',' ORDER BY action) FROM audit_logs WHERE entity_id = (SELECT id FROM users WHERE email = '$email')") -join ""
+$actions = (Psql "SELECT string_agg(DISTINCT action, ',' ORDER BY action) FROM audit_logs WHERE entity_id = (SELECT id::text FROM users WHERE email = '$email')") -join ""
 $need = 'user.register', 'user.email_verified', 'auth.login', 'auth.login_failed', 'password.reset_requested', 'password.reset', 'auth.logout'
 $missing = $need | Where-Object { $actions -notmatch [regex]::Escape($_) }
 Result "evenements_audites" ($missing.Count -eq 0) "présents=$actions manquants=$($missing -join ',')"

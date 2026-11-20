@@ -131,17 +131,16 @@ async def build_me(db: AsyncSession, ctx: AuthContext) -> s.MeOut:
     profile = (
         await db.execute(text("SELECT display_name FROM profiles WHERE user_id = :u"), {"u": ctx.user_id})
     ).scalar()
-    orgs = dict(
-        (
-            await db.execute(
-                text(
-                    "SELECT o.id, o.name FROM organizations o WHERE o.id IN "
-                    "(SELECT organization_id FROM user_roles WHERE user_id = :u AND organization_id IS NOT NULL)"
-                ),
-                {"u": ctx.user_id},
-            )
-        ).all()
-    )
+    rows = (
+        await db.execute(
+            text(
+                "SELECT o.id, o.name FROM organizations o WHERE o.id IN "
+                "(SELECT organization_id FROM user_roles WHERE user_id = :u AND organization_id IS NOT NULL)"
+            ),
+            {"u": ctx.user_id},
+        )
+    ).all()
+    orgs: dict[uuid.UUID, str] = {r.id: r.name for r in rows}
     return s.MeOut(
         id=ctx.user_id,
         email=ctx.email,

@@ -4,23 +4,19 @@
 export const CHECK_COOKIE = "nl_chk";
 export const CHECK_SECONDS = 60;
 
-export type RefreshOutcome =
-  | { kind: "keep" }
-  | { kind: "rotate"; token: string; expiresAt: string }
-  | { kind: "clear" };
+type Keep = { kind: "keep" };
+type Rotate = { kind: "rotate"; token: string; expiresAt: string };
+type Clear = { kind: "clear" };
+export type RefreshOutcome = Keep | Rotate | Clear;
 
 export function interpretRefresh(status: number, body: unknown): RefreshOutcome {
   if (status === 401) return { kind: "clear" };
   if (status !== 200 || typeof body !== "object" || body === null) return { kind: "keep" };
   const data = body as { rotated?: unknown; session_token?: unknown; expires_at?: unknown };
-  if (
-    data.rotated === true &&
-    typeof data.session_token === "string" &&
-    /^[A-Za-z0-9_-]{20,128}$/.test(data.session_token) &&
-    typeof data.expires_at === "string"
-  ) {
-    return { kind: "rotate", token: data.session_token, expiresAt: data.expires_at };
-  }
+  const token = typeof data.session_token === "string" ? data.session_token : "";
+  const expiresAt = typeof data.expires_at === "string" ? data.expires_at : "";
+  const valid = /^[A-Za-z0-9_-]{20,128}$/.test(token);
+  if (data.rotated === true && valid && expiresAt) return { kind: "rotate", token, expiresAt };
   return { kind: "keep" };
 }
 

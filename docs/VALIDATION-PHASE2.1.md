@@ -18,7 +18,7 @@ Le script met à jour `package-lock.json`, lance les audits (`npm audit`, `pip-a
 | Contrôle | Résultat |
 |---|---|
 | Migration `0004_identity` montée / retour arrière / remontée sur PostgreSQL 16 réel | ✅ |
-| Tests de base (`database/tests`, dont 10 tests d'identité : garde de rôles, invitations, jetons, audit) | ✅ 55/55 |
+| Tests de base (`database/tests`, dont 10 tests d'identité dans `test_identity_schema.py` : garde de rôles, invitations, jetons, audit) | ✅ 55/55 |
 | Ruff (lint + format), mypy | ✅ |
 | TypeScript (vérification avec déclarations simplifiées), Prettier, parité FR/EN des textes | ✅ |
 | Tests API (`tests/api/test_identity.py`, `test_mailpit.py`), Vitest, build Next.js, Playwright + axe | ⏳ à exécuter sur Windows (`validate-phase2.1.ps1`) — dépendances non installables dans cet environnement |
