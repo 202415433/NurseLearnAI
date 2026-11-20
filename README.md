@@ -28,6 +28,7 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 8. [Décisions d'architecture (ADR)](docs/adr/)
 9. [Référence de l'API](docs/API-REFERENCE.md)
 10. [Architecture de l'interface web](docs/FRONTEND-ARCHITECTURE.md)
+11. [Plan du lot 2.2 — moteur pédagogique](docs/PHASE2.2-PLAN.md) (proposé, non commencé)
 
 ## Structure
 
