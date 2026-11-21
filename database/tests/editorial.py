@@ -136,3 +136,76 @@ class Editorial:
         self.set_status("program_releases", release, "medical_review", author)
         self.set_status("program_releases", release, "approved", reviewer)
         self.set_status("program_releases", release, "published", reviewer)
+
+
+class EditorialV2(Editorial):
+    """Workflow à jour (0006, ADR-0010) : versions de modules et éditions relationnelles."""
+
+    # ------------------------------------------------------------------ sources vérifiées
+    def verified_source(self, version: str, verifier: str) -> str:
+        rid = self.cite_source(version)
+        self.run(verifier, f"UPDATE medical_references SET last_verified_at = current_date WHERE id = '{rid}'")
+        return rid
+
+    def approved_version(  # type: ignore[override]
+        self, lesson: str, author: str, reviewer: str, locale: str = "fr", sources: int = 1, verified: bool = True
+    ) -> str:
+        vid = self.lesson_version(lesson, author, locale)
+        for _ in range(sources):
+            if verified:
+                self.verified_source(vid, reviewer)
+            else:
+                self.cite_source(vid)
+        self.submit(vid, author)
+        self.approve(vid, reviewer)
+        return vid
+
+    # ------------------------------------------------------------------ versions de modules
+    def module_version(self, module: str, author: str, lessons: list[tuple[str, dict[str, str]]]) -> str:
+        mvid = new_id()
+        self.db.sql(
+            "INSERT INTO module_versions (id, module_id, version_no, author_id) "
+            f"SELECT '{mvid}', '{module}', coalesce(max(version_no), 0) + 1, '{author}' "
+            f"FROM module_versions WHERE module_id = '{module}'"
+        )
+        for pos, (lesson, versions) in enumerate(lessons):
+            self.db.sql(
+                "INSERT INTO module_version_lessons (module_version_id, module_id, lesson_id, position) "
+                f"VALUES ('{mvid}', '{module}', '{lesson}', {pos})"
+            )
+            for locale, lv in versions.items():
+                self.db.sql(
+                    "INSERT INTO module_version_lesson_versions (module_version_id, lesson_id, locale, lesson_version_id) "
+                    f"VALUES ('{mvid}', '{lesson}', '{locale}', '{lv}')"
+                )
+        return mvid
+
+    def approved_module_version(
+        self, module: str, author: str, reviewer: str, lessons: list[tuple[str, dict[str, str]]]
+    ) -> str:
+        mvid = self.module_version(module, author, lessons)
+        self.set_status("module_versions", mvid, "medical_review", author)
+        self.set_status("module_versions", mvid, "approved", reviewer)
+        return mvid
+
+    # ------------------------------------------------------------------ éditions relationnelles
+    def release_v2(
+        self, program: str, author: str, modules: list[tuple[str, str]], prerequisites: list[tuple[str, str]] = ()
+    ) -> str:
+        rid = new_id()
+        self.db.sql(
+            "INSERT INTO program_releases (id, program_id, release_no, author_id) "
+            f"SELECT '{rid}', '{program}', coalesce(max(release_no), 0) + 1, '{author}' "
+            f"FROM program_releases WHERE program_id = '{program}'"
+        )
+        for pos, (module, mv) in enumerate(modules):
+            self.db.sql(
+                "INSERT INTO program_release_modules (release_id, module_id, module_version_id, position) "
+                f"VALUES ('{rid}', '{module}', '{mv}', {pos})"
+            )
+        for module, prereq in prerequisites:
+            self.db.sql(
+                "INSERT INTO program_release_prerequisites (release_id, module_id, prerequisite_module_id) "
+                f"VALUES ('{rid}', '{module}', '{prereq}')"
+            )
+        return rid

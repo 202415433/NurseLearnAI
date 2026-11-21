@@ -2,6 +2,10 @@
 
 Tous les comportements sont vérifiés sur PostgreSQL réel : les invariants critiques sont
 portés par la base, indépendamment de l'API qui viendra au sous-lot 2.2.2.
+
+Depuis 0006 (D12, ADR-0010), les nouvelles éditions citent des versions de modules ; ce module
+reste la non-régression des éditions historiques (manifeste JSON) et s'exécute donc sur une base
+arrêtée à 0005. Le comportement à jour est vérifié par test_program_versions.py.
 """
 
 from __future__ import annotations
@@ -15,6 +19,11 @@ from editorial import Editorial, q
 
 
 # --------------------------------------------------------------------------- fixtures
+@pytest.fixture(scope="session")
+def db(db_0005):  # noqa: F811 — remplace la base « tête » pour ce module
+    return db_0005
+
+
 @pytest.fixture
 def ed(db) -> Editorial:
     return Editorial(db)

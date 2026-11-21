@@ -38,7 +38,8 @@ function Psql([string]$sql) { (docker compose exec -T postgres psql -U $PGU -d $
 Log "NurseLearn AI — validation sous-lot 2.2.1 — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_phase_2_2_1" ($branch -eq "phase-2.2.1-learning-data-model") $branch
+# Branche 2.2.1 ou ultérieure : le script sert aussi de non-régression aux étapes suivantes.
+Result "branche_phase_2_2_1_ou_ulterieure" ($branch -match '^phase-2\.2\.' -or $branch -eq "main") $branch
 
 # -----------------------------------------------------------------------------
 # 1. Non-régression complète (2.1 → 2.0 → 1.2)
@@ -68,7 +69,7 @@ if ($reg12) {
 # 2. Contrôles du sous-lot 2.2.1 (base de développement)
 # -----------------------------------------------------------------------------
 $rev = Psql "SELECT version_num FROM alembic_version"
-Result "migration_0005_en_tete" ($rev -eq "0005_learning_engine") $rev
+Result "migration_0005_appliquee" ($rev -match '^000[5-9]_') $rev
 $tables = Psql "SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_name IN ('program_releases','enrollments','learning_events','editorial_decisions')"
 Result "quatre_nouvelles_tables" ($tables -eq "editorial_decisions,enrollments,learning_events,program_releases") $tables
 $check = Psql "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'ck_lesson_versions_status'"

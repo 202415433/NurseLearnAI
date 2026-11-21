@@ -2,12 +2,13 @@
 -- Contenu FICTIF et NON MÉDICAL : il sert seulement à éprouver l'affichage d'un programme publié.
 -- Ne jamais charger en développement ni en production : le script refuse de s'exécuter sans
 --   PGOPTIONS="-c nl.allow_demo=on"
--- Mené par le workflow éditorial de 0005 (brouillon → relecture → approbation → publication).
+-- Mené par le workflow éditorial (0005) avec version de module explicite (0006) : brouillon → relecture
+-- → approbation → publication.
 -- Idempotent. Rattaché à Ontario / PSW afin que le pilote PAB Québec (brouillon) reste vide à l'écran.
 DO $$
 DECLARE
   v_author uuid; v_reviewer uuid; v_prof uuid; v_spec uuid; v_prog uuid; v_mod uuid; v_lesson uuid;
-  v_fr uuid; v_en uuid; v_release uuid;
+  v_fr uuid; v_en uuid; v_release uuid; v_mv uuid;
 BEGIN
   IF current_setting('nl.allow_demo', true) IS DISTINCT FROM 'on' THEN
     RAISE EXCEPTION 'Fixture de démonstration refusée : définir nl.allow_demo=on (CI uniquement).';
@@ -71,13 +72,23 @@ BEGIN
   PERFORM set_config('nl.actor_id', v_reviewer::text, true);
   UPDATE lesson_versions SET status = 'approved', next_review_due = current_date + 365 WHERE id IN (v_fr, v_en);
 
-  INSERT INTO program_releases (program_id, release_no, manifest, author_id, change_summary)
-  VALUES (v_prog, 1, jsonb_build_object('modules', jsonb_build_array(jsonb_build_object(
-            'module_id', v_mod, 'position', 0, 'required', true,
-            'lessons', jsonb_build_array(jsonb_build_object(
-              'lesson_id', v_lesson, 'position', 0, 'versions', jsonb_build_object('fr', v_fr, 'en', v_en)))))),
-          v_author, 'Édition de démonstration (CI)')
+  -- Version de module (0006, ADR-0010) : leçon et versions exactes citées explicitement.
+  INSERT INTO module_versions (module_id, version_no, author_id, change_summary)
+  VALUES (v_mod, 1, v_author, 'Version de démonstration (CI)') RETURNING id INTO v_mv;
+  INSERT INTO module_version_lessons (module_version_id, module_id, lesson_id, position)
+  VALUES (v_mv, v_mod, v_lesson, 0);
+  INSERT INTO module_version_lesson_versions (module_version_id, lesson_id, locale, lesson_version_id)
+  VALUES (v_mv, v_lesson, 'fr', v_fr), (v_mv, v_lesson, 'en', v_en);
+  PERFORM set_config('nl.actor_id', v_author::text, true);
+  UPDATE module_versions SET status = 'medical_review' WHERE id = v_mv;
+  PERFORM set_config('nl.actor_id', v_reviewer::text, true);
+  UPDATE module_versions SET status = 'approved' WHERE id = v_mv;
+
+  INSERT INTO program_releases (program_id, release_no, author_id, change_summary)
+  VALUES (v_prog, 1, v_author, 'Édition de démonstration (CI)')
   RETURNING id INTO v_release;
+  INSERT INTO program_release_modules (release_id, module_id, module_version_id, position)
+  VALUES (v_release, v_mod, v_mv, 0);
   PERFORM set_config('nl.actor_id', v_author::text, true);
   UPDATE program_releases SET status = 'medical_review' WHERE id = v_release;
   PERFORM set_config('nl.actor_id', v_reviewer::text, true);

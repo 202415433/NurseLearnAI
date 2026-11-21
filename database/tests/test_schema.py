@@ -181,17 +181,22 @@ def test_author_cannot_review_own_lesson(db, make_lesson, make_user):
     )
 
 
-def test_single_published_version_per_lesson_locale(db, make_lesson, make_user, make_reviewer, grant_role):
+def test_published_versions_are_independent_per_edition_since_0006(
+    db, make_lesson, make_user, make_reviewer, grant_role
+):
+    # Lot 1 : une seule version publiée par leçon × langue (index ux_lesson_versions_one_published).
+    # Décision D12 (ADR-0010, migration 0006) : chaque édition cite ses propres versions ; plusieurs
+    # versions publiées d'une même leçon coexistent. La règle d'unicité est levée volontairement.
+    assert db.sql("SELECT count(*) FROM pg_indexes WHERE indexname = 'ux_lesson_versions_one_published'") == "0"
     lid, author, reviewer = make_lesson(), make_user(), make_reviewer()
     grant_role(author, "instructor")
     ed = Editorial(db)
     v1 = ed.approved_version(lid, author, reviewer, "fr")
-    en = ed.approved_version(lid, author, reviewer, "en")
     v2 = ed.approved_version(lid, author, reviewer, "fr")
     publish = "UPDATE lesson_versions SET status = 'published' WHERE id = '{v}'"
     ed.run(reviewer, publish.format(v=v1))
-    ed.run(reviewer, publish.format(v=en))  # autre langue : OK
-    assert "duplicate key" in ed.fails(reviewer, publish.format(v=v2))
+    ed.run(reviewer, publish.format(v=v2))
+    assert db.sql(f"SELECT count(*) FROM lesson_versions WHERE lesson_id = '{lid}' AND status = 'published'") == "2"
 
 
 def test_images_require_alt_text_and_videos_captions(db, make_lesson):
