@@ -1,10 +1,10 @@
-"""Catalogue public en lecture seule.
+"""Catalogue public en lecture seule, lu À TRAVERS L'ÉDITION PUBLIÉE (étape 2.2.2-c).
 
-Règle de visibilité (non négociable) : seuls les programmes et modules au statut
-`published` et n'appartenant à aucun établissement sont exposés ; une leçon n'est
-listée que si elle possède une version PUBLIÉE — ce que la base n'autorise
-qu'après relecture par un relecteur médical habilité, distinct de l'auteur.
-Les brouillons et les contenus d'établissement ne sortent jamais par cette API.
+Règle de visibilité (non négociable) : un programme n'est exposé que s'il est `published`, hors
+établissement, et que son édition publiée est complète et cohérente (`editions.py`). Modules,
+ordre, caractère obligatoire, prérequis et versions exactes de leçon viennent de CETTE édition :
+aucune autre version publiée n'est jamais choisie à sa place. Les brouillons, les éditions non
+publiées et les contenus d'établissement ne sortent jamais par cette API.
 """
 
 from __future__ import annotations
@@ -21,8 +21,9 @@ from app.core.config import get_settings
 from app.core.errors import not_found
 from app.core.i18n import get_locale, pick
 from app.core.pagination import Page, PageParams, page_params
-from app.db.models import Jurisdiction, Lesson, LessonVersion, Module, Profession, Program, ProgramModule, Specialty
+from app.db.models import Jurisdiction, Lesson, LessonVersion, Module, Profession, Program, Specialty
 from app.db.session import get_session
+from app.domains.catalog.editions import RELEASE_CONTENT, RELEASE_PREREQUISITES, exposable_releases
 from app.domains.reference.router import JURISDICTION, PROFESSION
 
 router = APIRouter(prefix="/api/v1", tags=["catalogue"])
@@ -71,24 +72,28 @@ class ModuleOut(BaseModel):
     estimated_minutes: int
     position: int
     is_required: bool
+    prerequisites: list[str]  # codes des modules prérequis, figés par l'édition
     lessons: list[LessonOut]
 
 
 class ProgramDetail(ProgramSummary):
+    release_no: int  # numéro de l'édition publiée servie
     modules: list[ModuleOut]
 
 
 def _base_query():
-    module_count = (
-        select(func.count())
-        .select_from(ProgramModule)
-        .join(Module, Module.id == ProgramModule.module_id)
-        .where(ProgramModule.program_id == Program.id, *_public(Module))
-        .correlate(Program)
-        .scalar_subquery()
-    )
+    exposable = exposable_releases()
     return (
-        select(Program, Profession, Jurisdiction.code, Specialty, module_count)
+        select(
+            Program,
+            Profession,
+            Jurisdiction.code,
+            Specialty,
+            exposable.c.module_count,
+            exposable.c.release_id,
+            exposable.c.release_no,
+        )
+        .join(exposable, exposable.c.program_id == Program.id)
         .join(Profession, Profession.id == Program.profession_id)
         .join(Jurisdiction, Jurisdiction.id == Profession.jurisdiction_id)
         .outerjoin(Specialty, Specialty.id == Program.specialty_id)
@@ -97,7 +102,7 @@ def _base_query():
 
 
 def _summary(row, locale: str) -> ProgramSummary:
-    program, profession, jurisdiction_code, specialty, module_count = row
+    program, profession, jurisdiction_code, specialty, module_count = row[:5]
     return ProgramSummary(
         id=program.id,
         code=program.code,
@@ -134,13 +139,7 @@ async def list_programs(
     if level:
         filters.append(Program.level == level)
     total = (
-        await session.execute(
-            select(func.count(Program.id))
-            .join(Profession, Profession.id == Program.profession_id)
-            .join(Jurisdiction, Jurisdiction.id == Profession.jurisdiction_id)
-            .outerjoin(Specialty, Specialty.id == Program.specialty_id)
-            .where(*_public(Program), *filters)
-        )
+        await session.execute(select(func.count()).select_from(_base_query().where(*filters).subquery()))
     ).scalar_one()
     rows = (
         await session.execute(
@@ -155,50 +154,47 @@ async def get_program(session: Session, locale: Locale, program_id: uuid.UUID) -
     row = (await session.execute(_base_query().where(Program.id == program_id))).first()
     if row is None:
         raise not_found("Programme")
-    program, profession = row[0], row[1]
-
-    modules = (
-        await session.execute(
-            select(Module, ProgramModule.position, ProgramModule.is_required)
-            .join(ProgramModule, ProgramModule.module_id == Module.id)
-            .where(ProgramModule.program_id == program.id, *_public(Module))
-            .order_by(ProgramModule.position)
-        )
-    ).all()
-
+    release_id, release_no = row[5], row[6]
     default_locale = get_settings().default_locale
-    module_ids = [m.id for m, _, _ in modules]
-    versions = (
-        (
-            await session.execute(
-                select(Lesson, LessonVersion)
-                .join(LessonVersion, LessonVersion.lesson_id == Lesson.id)
-                .where(
-                    Lesson.module_id.in_(module_ids),
-                    LessonVersion.status == "published",
-                    LessonVersion.locale.in_(sorted({locale, default_locale})),
-                )
-            )
-        ).all()
-        if module_ids
-        else []
-    )
 
-    # Meilleure version publiée par leçon : langue demandée > juridiction du programme > contenu commun.
-    best: dict[uuid.UUID, tuple[tuple[int, int], Lesson, LessonVersion]] = {}
-    for lesson, version in versions:
-        if version.jurisdiction_id not in (None, profession.jurisdiction_id):
-            continue
-        score = (int(version.locale == locale), int(version.jurisdiction_id is not None))
-        if lesson.id not in best or score > best[lesson.id][0]:
-            best[lesson.id] = (score, lesson, version)
+    content = (await session.execute(RELEASE_CONTENT, {"release": release_id})).mappings().all()
+    module_ids = {c["module_id"] for c in content}
+    lesson_ids = {c["lesson_id"] for c in content}
+    modules = {m.id: m for m in (await session.execute(select(Module).where(Module.id.in_(module_ids)))).scalars()}
+    lessons = {x.id: x for x in (await session.execute(select(Lesson).where(Lesson.id.in_(lesson_ids)))).scalars()}
+
+    # Version EXACTE citée par l'édition : langue demandée si l'édition la cite, sinon langue de base.
+    cited: dict[tuple, dict[str, uuid.UUID]] = {}
+    placement: dict[uuid.UUID, tuple[int, bool]] = {}
+    lesson_order: dict[tuple, int] = {}
+    for c in content:
+        key = (c["module_id"], c["lesson_id"])
+        cited.setdefault(key, {})[c["locale"]] = c["lesson_version_id"]
+        placement[c["module_id"]] = (c["module_position"], c["module_required"])
+        lesson_order[key] = c["lesson_position"]
+    # (la version française est garantie par la règle d'exposition ; jamais une version hors édition)
+    chosen = {
+        key: by_locale.get(locale) or by_locale.get(default_locale) or by_locale["fr"]
+        for key, by_locale in cited.items()
+    }
+    versions = {
+        v.id: v
+        for v in (
+            await session.execute(select(LessonVersion).where(LessonVersion.id.in_(set(chosen.values()))))
+        ).scalars()
+    }
+
+    prerequisites: dict[uuid.UUID, list[str]] = {}
+    for p in (await session.execute(RELEASE_PREREQUISITES, {"release": release_id})).mappings():
+        prerequisites.setdefault(p["module_id"], []).append(modules[p["prerequisite_module_id"]].code)
 
     lessons_by_module: dict[uuid.UUID, list[LessonOut]] = {}
-    for _, lesson, version in best.values():
-        lessons_by_module.setdefault(lesson.module_id, []).append(
+    for (module_id, lesson_id), version_id in chosen.items():
+        lesson, version = lessons[lesson_id], versions[version_id]
+        lessons_by_module.setdefault(module_id, []).append(
             LessonOut(
                 code=lesson.code,
-                position=lesson.position,
+                position=lesson_order[(module_id, lesson_id)],
                 kind=lesson.kind,
                 estimated_minutes=lesson.estimated_minutes,
                 title=version.title,
@@ -210,15 +206,16 @@ async def get_program(session: Session, locale: Locale, program_id: uuid.UUID) -
 
     module_out = [
         ModuleOut(
-            code=m.code,
-            title=pick(m.title_i18n, locale) or m.code,
-            summary=pick(m.summary_i18n, locale),
-            level=m.level,
-            estimated_minutes=m.estimated_minutes,
+            code=modules[mid].code,
+            title=pick(modules[mid].title_i18n, locale) or modules[mid].code,
+            summary=pick(modules[mid].summary_i18n, locale),
+            level=modules[mid].level,
+            estimated_minutes=modules[mid].estimated_minutes,
             position=pos,
             is_required=req,
-            lessons=sorted(lessons_by_module.get(m.id, []), key=lambda x: x.position),
+            prerequisites=sorted(prerequisites.get(mid, [])),
+            lessons=sorted(lessons_by_module.get(mid, []), key=lambda x: x.position),
         )
-        for m, pos, req in modules
+        for mid, (pos, req) in sorted(placement.items(), key=lambda item: item[1][0])
     ]
-    return ProgramDetail(**_summary(row, locale).model_dump(), modules=module_out)
+    return ProgramDetail(**_summary(row, locale).model_dump(), release_no=release_no, modules=module_out)

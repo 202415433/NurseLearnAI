@@ -619,3 +619,42 @@ def test_demo_fixture_runs_through_the_workflow_at_head(scratch):
         )
         == "published|module_versions|published"
     )
+
+
+# --------------------------------------------------------------------------- catalogue (2.2.2-c)
+def _exposable_sql() -> str:
+    """Règle d'exposition du catalogue public, lue dans le code de l'API (sans l'importer)."""
+    import ast
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[2] / "services" / "api" / "app" / "domains" / "catalog" / "editions.py"
+    for node in ast.parse(source.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "EXPOSABLE_SQL":
+            return str(node.value.value)  # type: ignore[attr-defined]
+    raise AssertionError("EXPOSABLE_SQL introuvable")
+
+
+def test_catalog_exposes_historical_0005_editions_then_the_new_edition(scratch):
+    """Compatibilité : une édition manifest_v1 publiée sous 0005 reste exposée après 0006 ;
+    une nouvelle édition relationnelle la remplace explicitement."""
+    d = scratch("cat", "0005_learning_engine")
+    w, ed = World(d), Editorial(d)
+    a, r = w.user("instructor"), w.user("medical_reviewer")
+    program = w.program(medical=False)
+    module, (lesson,) = w.module()
+    fr = ed.approved_version(lesson, a, r, "fr", sources=0)
+    rel_v1 = ed.release(program, a, ed.manifest((module, [(lesson, {"fr": fr})])))
+    ed.publish_release(rel_v1, a, r)
+    d.file(UP)
+
+    exposure = f"SELECT release_id || '|' || module_count FROM ({_exposable_sql()}) e WHERE program_id = '{program}'"
+    assert d.sql(exposure) == f"{rel_v1}|1"
+    assert d.sql(f"SELECT lesson_version_id FROM nl_release_lessons('{rel_v1}') WHERE locale = 'fr'") == fr
+
+    ed2 = EditorialV2(d)
+    fr2 = ed.approved_version(lesson, a, r, "fr", sources=0)
+    mv = ed2.approved_module_version(module, a, r, [(lesson, {"fr": fr2})])
+    rel_v2 = ed2.release_v2(program, a, [(module, mv)])
+    ed2.publish_release(rel_v2, a, r)
+    assert d.sql(exposure) == f"{rel_v2}|1"
+    assert d.sql(f"SELECT lesson_version_id FROM nl_release_lessons('{rel_v2}')") == fr2

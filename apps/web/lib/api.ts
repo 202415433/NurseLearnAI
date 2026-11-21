@@ -78,10 +78,13 @@ export type ProgramModule = {
   estimated_minutes: number;
   position: number;
   is_required: boolean;
+  /** Codes des modules prérequis, figés par l'édition publiée. */
+  prerequisites: string[];
   lessons: Lesson[];
 };
 
-export type ProgramDetail = ProgramSummary & { modules: ProgramModule[] };
+/** Programme servi à travers son édition publiée (numéro `release_no`). */
+export type ProgramDetail = ProgramSummary & { release_no: number; modules: ProgramModule[] };
 
 // Validation stricte des paramètres provenant de l'URL avant tout appel.
 export const patterns = {

@@ -40,7 +40,7 @@ function ApiPy([string]$code) { (docker compose exec -T api python -c $code 2>&1
 Log "NurseLearn AI — validation étape 2.2.2-b — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_phase_2_2_2b" ($branch -eq "phase-2.2.2b-editorial-api") $branch
+Result "branche_phase_2_2_2b_ou_ulterieure" ($branch -match '^phase-2\.2\.2(b|c)' -or $branch -match '^phase-2\.2\.[3-9]' -or $branch -eq "main") $branch
 
 # -----------------------------------------------------------------------------
 # 1. Non-régression complète (2.2.2-a → 2.2.1 → 2.1 → 2.0 → 1.2)
