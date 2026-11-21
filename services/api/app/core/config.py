@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     public_web_url: str = "http://localhost:3000"
     # Région d'hébergement déclarée (ADR-0008) ; déclarative, ne garantit aucune résidence.
     data_region: str | None = None
+    # Publication RÉELLE d'un programme médical (étape 2.2.2-b) : désactivée tant que les conditions
+    # de production ne sont pas réunies (MFA des relecteurs D9, relecteur qualifié D10, textes
+    # juridiques). Les programmes non médicaux (démonstration, tests) restent publiables.
+    medical_publication_enabled: bool = False
 
     @model_validator(mode="after")
     def _production_guards(self) -> Settings:

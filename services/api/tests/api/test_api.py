@@ -57,8 +57,16 @@ def test_openapi_lists_phase_1_2_routes_read_only(client):
         "/ready",
     ):
         assert p in paths, p
-    # Référentiels et catalogue restent en lecture seule ; les écritures n'existent que pour l'identité (2.1).
-    writable = ("/api/v1/auth/", "/api/v1/me", "/api/v1/invitations", "/api/v1/organizations/", "/api/v1/admin/")
+    # Référentiels et catalogue restent en lecture seule ; les écritures n'existent que pour l'identité (2.1)
+    # et l'API éditoriale authentifiée (2.2.2-b), jamais pour le catalogue public.
+    writable = (
+        "/api/v1/auth/",
+        "/api/v1/me",
+        "/api/v1/invitations",
+        "/api/v1/organizations/",
+        "/api/v1/admin/",
+        "/api/v1/editorial/",
+    )
     for path, item in paths.items():
         if not path.startswith(writable):
             assert set(item) == {"get"}, f"{path} doit rester en lecture seule"
