@@ -88,7 +88,7 @@ désormais servi **avec** les modules de son édition.
 | Ruff (dépôt, 107 fichiers) et mypy (45 fichiers) | OK |
 | Web : typecheck, ESLint, Prettier, Vitest (34), `next build` | OK |
 | Base de type CI + fixture e2e, API réelle | Programme de démonstration servi avec 1 module, `release_no = 1`, leçon EN ; disponibilités du pilote inchangées |
-| Playwright + axe | **Non exécutés ici** : le téléchargement du navigateur est refusé par le proxy. À exécuter en CI et via `scripts\validate-phase2.2.2c.ps1` |
+| Playwright + axe | Non exécutables dans l'environnement de développement (navigateur bloqué par le proxy) ; **réussis sous Windows** (14 réussis, 1 ignoré : démonstration réservée à la CI) |
 
 Les scénarios couverts sont :
 - **Édition complète** : ordre des modules, positions de leçons figées, prérequis, retrait après
@@ -112,15 +112,29 @@ Les scénarios couverts sont :
 
 | Risque | Niveau | Traitement |
 |---|---|---|
-| Playwright et axe non exécutés dans cet environnement | Faible | CI (job Web) et validation Windows avant intégration |
 | Titres et résumés des modules lus dans `modules` (non versionnés), le contenu des leçons étant versionné | Faible | Documenté ; versionner ces métadonnées relèverait d'une décision ultérieure |
 | Caractère obligatoire d'une leçon (`module_version_lessons.required`) non exposé | Faible | Ajout prévu avec le lecteur (2.2.4) |
 | Coût de `nl_release_lessons` sur un gros catalogue | Faible | Fonction `STABLE` indexée ; à mesurer avant production, matérialisation possible |
 | Publication médicale toujours désactivée (D9, D10) | — | Volontaire |
 
+## 6 bis. Validation Windows
+
+- Journal `phase2.2.2c-20261120-212943.log`, branche `phase-2.2.2c-public-catalog` au commit `da55532`.
+- **11/11 contrôles 2.2.2-c réussis, 0 échec.**
+- Non-régression 2.2.2-b (12/12), qui enchaîne 2.2.2-a, 2.2.1, 2.1, 2.0 et 1.2.
+- pytest complet sur les bases jetables : **253 réussis**.
+- Vitest : 34 réussis. Playwright + axe : 14 réussis, 1 ignoré.
+- Contrôles 2.2.2-c :
+  - aucune nouvelle migration, toujours 71 tables ;
+  - aucun programme médical publié ;
+  - pilote PAB non exposé (0 publié, 1 en préparation) ;
+  - aucun programme exposé incomplet ;
+  - programme inconnu en 404 ;
+  - services Docker sains.
+
 ## 7. État Git
 
 - Branche locale `phase-2.2.2c-public-catalog`, sur `130054c`.
-- Un commit local, **non poussé**.
+- Commits locaux (catalogue, puis résultats Windows), **non poussés** : en attente d'autorisation.
 - Aucun développement 2.2.3, aucune modification des migrations historiques, aucune donnée ni aucun
   volume supprimés.
