@@ -14,8 +14,8 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 | 2.0 — Sécurité et qualité | ✅ intégrée dans `main` (#4) — [`docs/VALIDATION-PHASE2.0.md`](docs/VALIDATION-PHASE2.0.md) · [audit](docs/SECURITY-AUDIT-PHASE2.0.md) |
 | 2.1 — Identité et accès | ✅ validée (42/42 + 52/52), CI 7/7, PR #6 — [`docs/VALIDATION-PHASE2.1.md`](docs/VALIDATION-PHASE2.1.md) · [sécurité](docs/SECURITY-IDENTITY-PHASE2.1.md) · [préparation 2.2](docs/PHASE2.2-READINESS.md) |
 | 2.2.1 — Modèle pédagogique et règles éditoriales | ✅ intégré dans `main` (#8), CI 7/7 — [`docs/VALIDATION-PHASE2.2.1.md`](docs/VALIDATION-PHASE2.2.1.md) · [ADR-0009](docs/adr/0009-editions-figees-et-workflow-editorial.md) · [préparation 2.2.2](docs/PHASE2.2.2-READINESS.md) |
-| 2.2.2-a — Versions de modules indépendantes (migration 0006, ADR-0010) | ✅ validée localement (pytest 214, non-régression complète), branche `phase-2.2.2a-versioning-migration` non poussée — [`docs/VALIDATION-PHASE2.2.2A.md`](docs/VALIDATION-PHASE2.2.2A.md) · [préparation 2.2.2-b](docs/PHASE2.2.2B-READINESS.md) |
-| 2.2.2-b / c — API éditoriale, catalogue | 📝 plan proposé — [`docs/PHASE2.2.2-PLAN.md`](docs/PHASE2.2.2-PLAN.md) |
+| 2.2.2-a — Versions de modules indépendantes (migration 0006, ADR-0010) | ✅ intégrée dans `main` (#10), CI 7/7 — [`docs/VALIDATION-PHASE2.2.2A.md`](docs/VALIDATION-PHASE2.2.2A.md) · [préparation 2.2.2-b](docs/PHASE2.2.2B-READINESS.md) |
+| 2.2.2-b / c — API éditoriale, catalogue | 📝 plan détaillé prêt — [`docs/PHASE2.2.2B-READINESS.md`](docs/PHASE2.2.2B-READINESS.md) · [`docs/PHASE2.2.2-PLAN.md`](docs/PHASE2.2.2-PLAN.md) |
 | 2.2.3 à 2.5 | 🗓️ planifiées — [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
 | 3 à 7 | 🗓️ planifiées — voir [`docs/06-roadmap.md`](docs/06-roadmap.md) |
 
