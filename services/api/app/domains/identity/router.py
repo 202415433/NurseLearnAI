@@ -204,7 +204,7 @@ async def register(body: s.RegisterIn, request: Request, db: Db, settings: Setti
         )
         return ACCEPTED
     try:
-        user_id = (
+        user_id: uuid.UUID = (
             await db.execute(
                 text(
                     "INSERT INTO users (email, password_hash, status, locale, adult_attested_at, terms_version, "

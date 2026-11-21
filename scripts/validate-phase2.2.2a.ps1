@@ -38,7 +38,7 @@ function Psql([string]$sql) { (docker compose exec -T postgres psql -U $PGU -d $
 Log "NurseLearn AI — validation étape 2.2.2-a — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_phase_2_2_2a" ($branch -eq "phase-2.2.2a-versioning-migration") $branch
+Result "branche_phase_2_2_2a_ou_ulterieure" ($branch -match '^phase-2\.2\.2' -or $branch -eq "main") $branch
 
 # -----------------------------------------------------------------------------
 # 1. Non-régression complète (2.2.1 → 2.1 → 2.0 → 1.2)

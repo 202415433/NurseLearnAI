@@ -74,6 +74,34 @@ Authentification par `Authorization: Bearer <identifiant de session>` uniquement
 | `POST /api/v1/invitations/inspect` · `/accept` | session, adresse vérifiée identique | aperçu ; 200 nouvelle session avec le rôle |
 | `DELETE /api/v1/organizations/{id}/members/{user}/roles/{role}` · `/admin/users/{user}/roles/{role}` | sensible | 204 ; sessions de la personne fermées |
 
+### API éditoriale (étape 2.2.2-b)
+
+Préfixe `/api/v1/editorial`. Le détail figure dans [`VALIDATION-PHASE2.2.2B.md`](VALIDATION-PHASE2.2.2B.md).
+
+**Accès**
+- Toutes les routes exigent une session (`Authorization: Bearer`). Toute écriture exige une session
+  **sensible**, avec une activité de moins de 30 minutes.
+- Un contenu hors portée répond `404`. Une action interdite sur un contenu visible répond `403`.
+- Les brouillons se modifient avec `If-Match`, qui reçoit l'`ETag` de la dernière lecture : `428` si
+  l'en-tête est absent, `412` s'il est périmé.
+
+**Routes**
+
+| Domaine | Opérations |
+|---|---|
+| Structure | `GET`/`POST /programs`, `GET`/`PATCH /programs/{id}`, `GET`/`POST /modules`, `GET`/`PATCH /modules/{id}`, `POST /modules/{id}/lessons`, `GET`/`PATCH /lessons/{id}` |
+| Versions de leçon | `POST /lessons/{id}/versions`, `GET`/`PATCH`/`DELETE /lesson-versions/{id}`, `PUT /lesson-versions/{id}/sources` |
+| Versions de module | `POST /modules/{id}/versions`, `GET`/`PATCH`/`DELETE /module-versions/{id}` |
+| Éditions | `GET`/`POST /programs/{id}/releases`, `GET`/`PATCH /releases/{id}`, `POST /releases/{id}/publish` (**seule** voie de publication) |
+| Workflow | `POST /{kind}/{id}/submit|request-changes|approve|archive|abandon`, avec `kind` = `lesson-versions`, `module-versions` ou `releases` ; `GET /review-queue` ; `GET /{kind}/{id}/decisions` ; `GET /{kind}/{id}/diff?against={id}` |
+| Sources médicales | `GET`/`POST /references`, `POST /references/{id}/verify`, `POST /references/{id}/withdraw` (relecteur plateforme) |
+
+**Erreurs.** Elles sont au format `application/problem+json` avec un champ `code` stable, par exemple
+`self_approval`, `not_draft`, `missing_source`, `source_unverified` ou `medical_publication_disabled`.
+Le texte SQL n'est jamais exposé.
+
+**Publication.** La publication d'un programme **médical** est désactivée (`medical_publication_enabled=false`).
+
 ## Exemples
 
 ```powershell
@@ -86,4 +114,4 @@ curl.exe -s "http://localhost:28000/api/v1/professions?jurisdiction=%3Cx%3E"    
 
 ## Évolution
 
-Toute modification incompatible passera par `/api/v1` → `/api/v2`. Les points d'accès authentifiés (profil, progression, administration, relecture) sont prévus en Phase 2 (`docs/07-plan-phase-2.md`).
+Toute modification incompatible passera par `/api/v1` → `/api/v2`. Les points d'accès authentifiés de progression et d'administration des contenus côté interface sont prévus dans les lots suivants (`docs/07-plan-phase-2.md`) ; l'API éditoriale existe depuis 2.2.2-b.
