@@ -277,5 +277,22 @@ La mesure n'est **pas appliquée** : elle attend ton accord (Mission 4).
 
 ## 9. Validation Windows et CI de la PR
 
-À compléter avec le journal `docs\validation-logs\phase2.2.2b-<date>.log` et les résultats des
-sept jobs de la PR.
+**Windows**
+- Journal `phase2.2.2b-20261120-205355.log`, branche `phase-2.2.2b-editorial-api` au commit `d9d1c9d`.
+- **12/12 contrôles 2.2.2-b réussis, 0 échec.**
+- La non-régression 2.2.2-a (16/16) enchaîne 2.2.1, 2.1, 2.0 et 1.2.
+- pytest complet sur les bases jetables (base, migrations, API dont les tests éditoriaux) :
+  **244 réussis**.
+- Le reste a été vérifié par la non-régression : Vitest, Playwright + axe, Ruff, mypy et les audits.
+
+| Contrôle 2.2.2-b | Résultat |
+|---|---|
+| Migration en tête `0006_independent_versions`, 71 tables | PASS |
+| Pilote PAB en brouillon, sans édition | PASS |
+| Aucun programme médical publié | PASS |
+| 37 opérations, une seule route de publication | PASS |
+| `medical_publication_enabled=False` | PASS |
+| Accès anonyme → 401 `problem+json` ; cookie sans Bearer → 401 | PASS |
+| Services Docker sains (api, s3, postgres, redis, web) | PASS |
+
+**CI de la PR** : voir la PR ; résultats reportés dans le rapport d'intégration.
