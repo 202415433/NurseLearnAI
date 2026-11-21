@@ -836,6 +836,9 @@ def test_non_medical_release_publication_then_archive(api: TestClient, w: World,
         p=chain["program"]["id"],
     ).one()
     assert tuple(statuses) == ("published", "published", "published")
+    path = f"{E}/lesson-versions/{chain['lv']['id']}"
+    gone = api.delete(path, headers=_etag(api, w.author, path))
+    assert gone.status_code == 409 and problem_code(gone) == "not_draft"
     # Une version citée par une édition publiée ne s'archive pas.
     r = api.post(
         f"{E}/module-versions/{chain['mv']['id']}/archive", headers=w.reviewer.h, json={"reason": "Essai d'archivage"}
@@ -982,3 +985,86 @@ def test_every_editorial_database_rule_has_a_stable_code() -> None:
         "inactive_enrollment",
     }
     assert editorial_hints <= set(CODES), sorted(editorial_hints - set(CODES))
+
+
+def _etag(api: TestClient, who: Acct, path: str) -> dict[str, str]:
+    return {**who.h, "If-Match": api.get(path, headers=who.h).headers["ETag"]}
+
+
+def test_delete_never_removes_submitted_referenced_or_historical_data(
+    api: TestClient, w: World, sync_engine: Engine
+) -> None:
+    """DELETE : seulement un brouillon jamais soumis, non référencé, sans trace ; audité ; aucune cascade."""
+    mod = new_module(api, w, w.author)
+    les = new_lesson(api, w.author, mod["id"])
+    # Soumis (medical_review) : refus.
+    submitted = ok(new_version(api, w.author, les["id"]), 201)
+    ok(submit(api, w.author, "lesson-versions", submitted["id"]))
+    path = f"{E}/lesson-versions/{submitted['id']}"
+    r = api.delete(path, headers=_etag(api, w.author, path))
+    assert r.status_code == 409 and problem_code(r) == "not_draft"
+    # Brouillon cité par une version de module, et version de module citée par une édition : refus.
+    cited = ok(new_version(api, w.author, new_lesson(api, w.author, mod["id"], 1)["id"]), 201)
+    mv = ok(
+        api.post(
+            f"{E}/modules/{mod['id']}/versions",
+            headers=w.author.h,
+            json={"lessons": [{"lesson_id": cited["lesson_id"], "position": 0, "versions": {"fr": cited["id"]}}]},
+        ),
+        201,
+    )
+    path = f"{E}/lesson-versions/{cited['id']}"
+    r = api.delete(path, headers=_etag(api, w.author, path))
+    assert r.status_code == 409 and problem_code(r) == "in_use"
+    prog = new_program(api, w, w.author)
+    ok(
+        api.post(
+            f"{E}/programs/{prog['id']}/releases",
+            headers=w.author.h,
+            json={"modules": [{"module_version_id": mv["id"], "position": 0}], "change_summary": "Brouillon"},
+        ),
+        201,
+    )
+    path = f"{E}/module-versions/{mv['id']}"
+    r = api.delete(path, headers=_etag(api, w.author, path))
+    assert r.status_code == 409 and problem_code(r) == "in_use"
+    # Brouillon visé par un signalement (clé étrangère en CASCADE) : refus, le signalement subsiste.
+    reported = ok(new_version(api, w.author, new_lesson(api, w.author, mod["id"], 2)["id"]), 201)
+    report = sql(
+        sync_engine,
+        "INSERT INTO content_issue_reports (lesson_version_id, category, description) "
+        "VALUES (:v, 'typo', 'Signalement fictif (test)') RETURNING id",
+        v=reported["id"],
+    ).scalar()
+    path = f"{E}/lesson-versions/{reported['id']}"
+    r = api.delete(path, headers=_etag(api, w.author, path))
+    assert r.status_code == 409 and problem_code(r) == "history"
+    assert sql(sync_engine, "SELECT count(*) FROM content_issue_reports WHERE id = :i", i=report).scalar() == 1
+    # Brouillon libre : suppression autorisée, auditée, sans toucher à la source citée.
+    free = new_version(api, w.author, new_lesson(api, w.author, mod["id"], 3)["id"])
+    ref = ok(
+        api.post(
+            f"{E}/references",
+            headers=w.author.h,
+            json={"kind": "guideline", "title": f"Source fictive {code()}", "url": "https://example.test/d"},
+        ),
+        201,
+    )
+    put = api.put(
+        f"{E}/lesson-versions/{free.json()['id']}/sources",
+        headers={**w.author.h, "If-Match": free.headers["ETag"]},
+        json={"references": [{"reference_id": ref["id"]}]},
+    )
+    path = f"{E}/lesson-versions/{free.json()['id']}"
+    assert api.delete(path, headers={**w.author.h, "If-Match": put.headers["ETag"]}).status_code == 204
+    assert sql(sync_engine, "SELECT count(*) FROM medical_references WHERE id = :i", i=ref["id"]).scalar() == 1
+    audit = sql(
+        sync_engine,
+        "SELECT action, actor_user_id FROM audit_logs WHERE entity_id = :i ORDER BY id DESC LIMIT 1",
+        i=free.json()["id"],
+    ).one()
+    assert audit.action == "content.deleted" and str(audit.actor_user_id) == w.author.user_id
+    # Aucune route ne supprime une décision ou un historique d'apprentissage.
+    paths = api.app.openapi()["paths"]  # type: ignore[attr-defined]
+    deletable = sorted(p for p, item in paths.items() if p.startswith(E) and "delete" in item)
+    assert deletable == [f"{E}/lesson-versions/{{version_id}}", f"{E}/module-versions/{{version_id}}"]

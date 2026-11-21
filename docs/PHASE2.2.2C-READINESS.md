@@ -21,6 +21,13 @@ Conséquences si rien ne change :
 - Une version restée `published` après l'archivage de son édition pourrait réapparaître dans un autre
   programme qui partage le module.
 
+### Constat vérifié (2.2.2-b)
+
+Un programme publié par l'API est servi par le catalogue avec `modules = []` et `module_count = 0`.
+Une **mesure transitoire** est proposée, sans être appliquée : n'exposer un programme que si son
+édition publiée et `program_modules` sont cohérentes (voir `VALIDATION-PHASE2.2.2B.md`, § 7 ter).
+2.2.2-c la retirera en lisant directement l'édition publiée.
+
 ## 2. Périmètre proposé
 
 | # | Élément | Détail |

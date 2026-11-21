@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import ProblemError
 from app.domains.editorial import schemas as s
 from app.domains.editorial.errors import BASE, problem
+from app.domains.editorial.queries import ensure_deletable
 from app.domains.editorial.scope import ensure_can, load
 from app.domains.editorial.tx import check_if_match, editorial_tx, etag_of, record
 from app.domains.identity.deps import Auth, Db, SensitiveAuth, parse_uuid
@@ -187,23 +188,7 @@ async def delete_module_version(version_id: str, request: Request, ctx: Sensitiv
         if entity.status != "draft":
             raise problem("not_draft")
         check_if_match(request, module_version_etag(entity.row, await module_version_items(db, entity.id)))
-        history = (
-            await db.execute(
-                text(
-                    "SELECT 1 FROM editorial_decisions WHERE entity_type = 'module_version' AND entity_id = :id LIMIT 1"
-                ),
-                {"id": entity.id},
-            )
-        ).first()
-        if history is not None:
-            raise problem("history")
-        cited = (
-            await db.execute(
-                text("SELECT 1 FROM program_release_modules WHERE module_version_id = :id LIMIT 1"), {"id": entity.id}
-            )
-        ).first()
-        if cited is not None:
-            raise problem("in_use", detail="Version citée par une édition : retirez-la d'abord")
+        await ensure_deletable(db, "module_version", entity.id)
         await db.execute(text("DELETE FROM module_versions WHERE id = :id"), {"id": entity.id})
         await record(db, request, ctx, "content.deleted", "module_version", entity.id, entity.org)
     return Response(status_code=204)

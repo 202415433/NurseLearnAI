@@ -160,14 +160,14 @@ dans le test. Aucun contenu médical n'est publié.
 
 | Suite | Résultat |
 |---|---|
-| `services/api/tests/api/test_editorial.py` | **29 réussis** |
-| `services/api/tests/api tests/unit` (API complète + unitaires) | **116 réussis, 1 ignoré** (Mailpit, hors Docker), exécutée deux fois de suite sur la même base : stable |
+| `services/api/tests/api/test_editorial.py` | **30 réussis** |
+| `services/api/tests/api tests/unit` (API complète + unitaires) | **117 réussis, 1 ignoré** (Mailpit, hors Docker), exécutée deux fois de suite sur la même base : stable |
 | `database/tests` (migrations 0001→0006, règles, retour arrière) | **121 réussis** |
 | Ruff `check` + `format --check` (dépôt) | OK, 103 fichiers |
 | mypy (`app`, strict) | OK, 44 fichiers |
 | pip-audit (dépendances de l'API) | aucune vulnérabilité, à jour (`opentelemetry-api` 1.45.2, celle qu'installe la CI) |
 
-Les 29 tests éditoriaux couvrent :
+Les 30 tests éditoriaux couvrent :
 - l'inventaire des routes ;
 - l'authentification ;
 - les contrats ;
@@ -194,7 +194,8 @@ Les 29 tests éditoriaux couvrent :
 - la portée de l'éditeur ;
 - l'audit sans contenu ;
 - les erreurs PostgreSQL ;
-- la traduction et sa couverture.
+- la traduction et sa couverture ;
+- l'audit des routes `DELETE` (section 7 bis).
 
 Ajustements hors du domaine éditorial :
 - `tests/api/test_api.py` : `/api/v1/editorial/` est ajouté aux préfixes autorisés en écriture. Le
@@ -206,11 +207,60 @@ Validation Windows : `scripts\validate-phase2.2.2b.ps1`. Il enchaîne `validate-
 donc toute la non-régression, puis effectue des contrôles en lecture seule sur l'API et la base de
 développement.
 
+## 7 bis. Audit des routes `DELETE` (avant push)
+
+Deux routes seulement : `DELETE /lesson-versions/{id}` et `DELETE /module-versions/{id}`. Aucune
+route ne supprime une décision éditoriale : `editorial_decisions` est en ajout seul, protégée par un
+déclencheur. Aucune route ne touche non plus un historique d'apprentissage ou une source.
+
+| Cas | Résultat | Garde |
+|---|---|---|
+| Contenu soumis, approuvé, publié ou archivé | 409 `not_draft` | API (état sous verrou) + déclencheurs `*_delete` (0005, 0006) |
+| Brouillon renvoyé après relecture (décision journalisée) | 409 `history` → l'abandonner | `ensure_deletable` |
+| Brouillon de leçon cité par une version de module | 409 `in_use` | `ensure_deletable` + clé étrangère RESTRICT |
+| Brouillon de version de module cité par une édition | 409 `in_use` | `ensure_deletable` + clé étrangère RESTRICT |
+| Brouillon visé par un **signalement de contenu** | 409 `history`, le signalement subsiste | `ensure_deletable` (**correction**) |
+| Brouillon référencé par `learning_events` ou `student_progress` | 409 `history` | `ensure_deletable` + clé étrangère RESTRICT |
+| Brouillon libre, jamais soumis | 204, audit `content.deleted` (acteur, portée), `If-Match` obligatoire | seules ses citations de sources (lignes de liaison) et, pour une version de module, ses propres lignes de composition sont retirées ; la source elle-même est conservée |
+
+**Correction effectuée pendant l'audit.** La clé étrangère historique
+`content_issue_reports.lesson_version_id` est en `ON DELETE CASCADE` (0001, non modifiée). Supprimer
+un brouillon visé par un signalement aurait donc effacé ce signalement. `ensure_deletable` vérifie
+désormais explicitement **chaque** table qui référence une version, y compris celles en CASCADE,
+avant toute suppression. Le test `test_delete_never_removes_submitted_referenced_or_historical_data`
+couvre tous les cas du tableau.
+
+## 7 ter. Catalogue public : risque vérifié et mesure transitoire proposée (non appliquée)
+
+**Constat, reproduit sur base réelle.** Un programme non médical publié par l'API (édition
+relationnelle, sans ligne dans `program_modules`) est exposé par le catalogue public :
+- `GET /api/v1/programs/{id}` répond **200 avec `modules = []`** ;
+- la liste l'affiche avec `module_count = 0`.
+
+Le parcours est donc incomplet. Il n'y a pas de fuite de brouillon, mais l'affichage est trompeur.
+Aujourd'hui, aucune donnée n'est concernée : rien n'est publié en dehors des tests, et la publication
+médicale est coupée.
+
+**Mesure proposée (minimale, sans migration ni donnée modifiée, sans développer 2.2.2-c).** Dans
+`app/domains/catalog/router.py`, ajouter au filtre `_public(Program)` une condition de **cohérence** :
+1. le programme a une édition `published` ;
+2. il a au moins une ligne `program_modules` ;
+3. tout module de son édition publiée (`nl_release_lessons(release)`) figure dans `program_modules`.
+
+Sinon, il n'est ni listé ni détaillé (404), comme un programme en préparation.
+
+- Effet sur la fixture e2e (`e2e_demo_published.sql`) : aucun, puisqu'elle remplit `program_modules`
+  en cohérence avec son édition.
+- Effet sur les éditions `manifest_v1` : aucun.
+- Retrait : à la mise en place de 2.2.2-c, qui lira directement l'édition publiée.
+
+La mesure n'est **pas appliquée** : elle attend ton accord (Mission 4).
+
 ## 7. Risques et limites
 
 | Risque ou limite | Niveau | Traitement |
 |---|---|---|
-| Le catalogue public (`/api/v1/programs/{id}`) lit encore `program_modules` et « une » version publiée par leçon, pas l'édition publiée | Moyen | **2.2.2-c**. Aucune donnée réelle n'est concernée : aucun contenu n'est publié en production |
+| Le catalogue public (`/api/v1/programs/{id}`) lit encore `program_modules` et « une » version publiée par leçon, pas l'édition publiée ; un programme publié par l'API y apparaît **sans modules** (vérifié) | Moyen | Mesure transitoire proposée (§ 7 ter), puis **2.2.2-c**. Aucune donnée réelle n'est concernée |
 | Après archivage d'une édition, ses versions de leçon et de module restent `published` (historique 0006) | Faible | Le catalogue 2.2.2-c lira l'édition publiée, et non l'état des versions |
 | MFA des relecteurs non encore exigée (D9) | Élevé avant production | Publication médicale réelle désactivée par configuration |
 | Relecteur qualifié réel absent (D10) | Bloquant pour la mise en ligne | Aucun relecteur fictif ; le pilote PAB reste en brouillon |
@@ -221,6 +271,11 @@ développement.
 ## 8. État Git
 
 - Branche locale : `phase-2.2.2b-editorial-api`, sur `000a1f3`.
-- Un commit local, **non poussé**, comme demandé.
+- Deux commits locaux : l'API, puis la correction de l'audit `DELETE`. Le push est autorisé après la validation Windows (voir section 9).
 - Aucune migration historique n'a été modifiée et aucune donnée n'a été supprimée.
 - Aucun service payant n'est utilisé et rien n'a été développé pour 2.2.2-c.
+
+## 9. Validation Windows et CI de la PR
+
+À compléter avec le journal `docs\validation-logs\phase2.2.2b-<date>.log` et les résultats des
+sept jobs de la PR.

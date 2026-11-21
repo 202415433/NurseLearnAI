@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import ProblemError
 from app.domains.editorial import schemas as s
 from app.domains.editorial.errors import BASE, problem
+from app.domains.editorial.queries import ensure_deletable
 from app.domains.editorial.scope import Entity, ensure_can, load
 from app.domains.editorial.tx import check_if_match, editorial_tx, etag_of, record
 from app.domains.identity.deps import Auth, Db, SensitiveAuth, parse_uuid
@@ -235,25 +236,8 @@ async def delete_lesson_version(version_id: str, request: Request, ctx: Sensitiv
     vid = parse_uuid(version_id)
     async with editorial_tx(db, ctx):
         entity = await _locked_draft(db, ctx, request, vid)
-        history = (
-            await db.execute(
-                text(
-                    "SELECT 1 FROM editorial_decisions WHERE entity_type = 'lesson_version' AND entity_id = :id LIMIT 1"
-                ),
-                {"id": entity.id},
-            )
-        ).first()
-        if history is not None:
-            # Un brouillon déjà soumis puis renvoyé garde son historique : l'abandonner (archivage).
-            raise problem("history")
-        cited = (
-            await db.execute(
-                text("SELECT 1 FROM module_version_lesson_versions WHERE lesson_version_id = :id LIMIT 1"),
-                {"id": entity.id},
-            )
-        ).first()
-        if cited is not None:
-            raise problem("in_use", detail="Version citée par une version de module : retirez-la d'abord")
+        # Un brouillon déjà soumis puis renvoyé garde son historique : l'abandonner (archivage).
+        await ensure_deletable(db, "lesson_version", entity.id)
         await db.execute(text("DELETE FROM lesson_version_references WHERE lesson_version_id = :v"), {"v": entity.id})
         await db.execute(text("DELETE FROM lesson_versions WHERE id = :id"), {"id": entity.id})
         await record(db, request, ctx, "content.deleted", "lesson_version", entity.id, entity.org)

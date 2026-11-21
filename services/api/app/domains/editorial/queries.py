@@ -13,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ProblemError
-from app.domains.editorial.errors import BASE
+from app.domains.editorial.errors import BASE, problem
 
 _CHECKS = text(
     """
@@ -70,3 +70,35 @@ async def ensure_publishable(db: AsyncSession, release_id: Any) -> None:
             type_=BASE + "publication-requirements",
             extra={"code": "publication_requirements", "issues": issues[:50]},
         )
+
+
+# Suppression d'un brouillon : uniquement s'il n'a laissé AUCUNE trace. Chaque table qui référence
+# une version est vérifiée explicitement, y compris celles dont la clé étrangère est en CASCADE
+# (signalements de contenu) : une suppression n'emporte jamais une autre donnée.
+_DELETE_BLOCKERS = {
+    "lesson_version": text(
+        """
+SELECT 'history' FROM editorial_decisions WHERE entity_type = 'lesson_version' AND entity_id = :id
+UNION ALL SELECT 'in_use' FROM module_version_lesson_versions WHERE lesson_version_id = :id
+UNION ALL SELECT 'history' FROM content_issue_reports WHERE lesson_version_id = :id
+UNION ALL SELECT 'history' FROM learning_events WHERE lesson_version_id = :id
+UNION ALL SELECT 'history' FROM student_progress WHERE lesson_version_id = :id
+LIMIT 1
+"""
+    ),
+    "module_version": text(
+        """
+SELECT 'history' FROM editorial_decisions WHERE entity_type = 'module_version' AND entity_id = :id
+UNION ALL SELECT 'in_use' FROM program_release_modules WHERE module_version_id = :id
+UNION ALL SELECT 'history' FROM learning_events WHERE module_version_id = :id
+UNION ALL SELECT 'history' FROM student_progress WHERE module_version_id = :id
+LIMIT 1
+"""
+    ),
+}
+
+
+async def ensure_deletable(db: AsyncSession, entity_type: str, entity_id: Any) -> None:
+    blocker = (await db.execute(_DELETE_BLOCKERS[entity_type], {"id": entity_id})).scalar()
+    if blocker is not None:
+        raise problem(str(blocker))

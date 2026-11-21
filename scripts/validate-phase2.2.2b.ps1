@@ -4,7 +4,7 @@
 #   powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.2b.ps1
 #
 # 1. non-régression complète : scripts\validate-phase2.2.2a.ps1 (qui enchaîne 2.2.1, 2.1, 2.0, 1.2 :
-#    qualité, audits, pile Docker reconstruite, pytest sur bases jetables — dont les 29 tests de
+#    qualité, audits, pile Docker reconstruite, pytest sur bases jetables — dont les 30 tests de
 #    l'API éditoriale —, Vitest, Playwright + axe) ;
 # 2. contrôles propres à 2.2.2-b, en LECTURE SEULE : aucune écriture dans la base de développement,
 #    aucun compte créé, aucune publication. Ne supprime aucun volume ni aucune donnée.
