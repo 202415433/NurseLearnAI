@@ -115,7 +115,8 @@ Les scénarios couverts sont :
 | Titres et résumés des modules lus dans `modules` (non versionnés), le contenu des leçons étant versionné | Faible | Documenté ; versionner ces métadonnées relèverait d'une décision ultérieure |
 | Caractère obligatoire d'une leçon (`module_version_lessons.required`) non exposé | Faible | Ajout prévu avec le lecteur (2.2.4) |
 | Coût de `nl_release_lessons` sur un gros catalogue | Faible | Fonction `STABLE` indexée ; à mesurer avant production, matérialisation possible |
-| Publication médicale toujours désactivée (D9, D10) | — | Volontaire |
+| MFA des relecteurs absente (D9) | Élevé avant production | Publication médicale réelle désactivée (`medical_publication_enabled=false`) jusqu'à sa mise en place |
+| Relecteur médical qualifié non désigné (D10) | Bloquant pour la mise en ligne | Aucun relecteur fictif ; pilote PAB Québec en brouillon ; aucun contenu médical publié |
 
 ## 6 bis. Validation Windows
 
@@ -135,6 +136,6 @@ Les scénarios couverts sont :
 ## 7. État Git
 
 - Branche locale `phase-2.2.2c-public-catalog`, sur `130054c`.
-- Commits locaux (catalogue, puis résultats Windows), **non poussés** : en attente d'autorisation.
+- Commits `da55532` (catalogue), `7c7f07c` (résultats Windows) et cette mise à jour documentaire. Push et PR autorisés ; **fusion non autorisée**.
 - Aucun développement 2.2.3, aucune modification des migrations historiques, aucune donnée ni aucun
   volume supprimés.
