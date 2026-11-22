@@ -291,5 +291,21 @@ Résultat : à exécuter sous Windows sur le commit corrigé (voir § 9).
 
 ## 9. Validation Windows et CI
 
-À compléter après exécution de `scripts\validate-phase2.2.3a.ps1` sur le commit corrigé, puis
-après la CI de la PR.
+**Windows**
+- Journal `phase2.2.3a-20261121-212714.log`, branche `phase-2.2.3-secure-media` au commit `15d1c07`.
+- **18/18 contrôles 2.2.3-a réussis, 0 échec.**
+- Non-régression 2.2.2-c (11/11), qui enchaîne 2.2.2-b, 2.2.2-a, 2.2.1, 2.1, 2.0 et 1.2.
+- pytest complet sur bases jetables, dont `test_media_foundation.py` et la chaîne 0001 → 0007 :
+  **276 réussis**.
+- Base de développement :
+  - migration en tête `0007_secure_media_foundation` ;
+  - schéma de tête vérifié : 75 tables, 186 clés étrangères, 188 index, 79 déclencheurs ;
+  - aucun rôle ne détient `media:scan`, aucun média n'est `clean` ;
+  - sondes d'invariants annulées : `media:scan` refusée à l'administrateur, quota non falsifiable,
+    aucun compteur stocké ;
+  - quotas 1, 5 et 20 Gio ;
+  - aucun programme médical publié, pilote PAB en brouillon ;
+  - services Docker sains.
+- Aucun volume ni aucune donnée supprimés.
+
+**CI de la PR** : voir la PR ; résultats reportés dans le rapport d'intégration.
