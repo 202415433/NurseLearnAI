@@ -20,6 +20,7 @@ from app.core.i18n import get_locale, pick
 from app.core.pagination import Page, PageParams, page_params
 from app.db.models import Country, Jurisdiction, Profession, Program, Specialty
 from app.db.session import get_session
+from app.domains.catalog.editions import exposable_releases
 
 router = APIRouter(prefix="/api/v1", tags=["référentiels"])
 
@@ -87,13 +88,16 @@ def _public_program_filters():
 async def _availability(session: AsyncSession, profession_ids: list[uuid.UUID]) -> dict[uuid.UUID, Availability]:
     if not profession_ids:
         return {}
+    # « Publié » = exposé par le catalogue (édition publiée complète et cohérente, 2.2.2-c).
+    exposable = exposable_releases()
     rows = (
         await session.execute(
             select(
                 Program.profession_id,
-                func.count().filter(Program.status == "published"),
+                func.count().filter(exposable.c.release_id.is_not(None)),
                 func.count().filter(Program.status == "draft"),
             )
+            .outerjoin(exposable, exposable.c.program_id == Program.id)
             .where(Program.profession_id.in_(profession_ids), *_public_program_filters())
             .group_by(Program.profession_id)
         )
@@ -208,8 +212,10 @@ async def list_specialties(
     jurisdiction: Annotated[str | None, Query(pattern=JURISDICTION)] = None,
     profession: Annotated[str | None, Query(pattern=PROFESSION)] = None,
 ) -> Page[SpecialtyOut]:
+    exposable = exposable_releases()
     counts_query = (
         select(Program.specialty_id, func.count())
+        .join(exposable, exposable.c.program_id == Program.id)
         .join(Profession, Profession.id == Program.profession_id)
         .join(Jurisdiction, Jurisdiction.id == Profession.jurisdiction_id)
         .where(Program.status == "published", *_public_program_filters())

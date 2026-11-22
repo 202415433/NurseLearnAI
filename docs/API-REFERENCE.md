@@ -43,9 +43,9 @@ Un métier appartient à **une seule** juridiction : l'API ne déduit jamais d'�
 | Chemin | Filtres | Réponse |
 |---|---|---|
 | `GET /api/v1/programs` | `jurisdiction`, `profession`, `specialty`, `level=beginner|fundamental|intermediate|advanced|professional_prep` | Page de `{id, code, title, summary, level, access_tier, profession_code, profession_title, jurisdiction_code, specialty_code, specialty_name, module_count}` |
-| `GET /api/v1/programs/{id}` | `id` UUID | Programme + `modules[]` publiés (`code, title, summary, level, estimated_minutes, position, is_required, lessons[]`) ; chaque leçon : `code, position, kind, estimated_minutes, title, locale, jurisdiction_specific, next_review_due`. `404` pour un programme inconnu, en brouillon ou privé |
+| `GET /api/v1/programs/{id}` | `id` UUID | Programme servi par son **édition publiée** : `release_no` + `modules[]` de l'édition (`code, title, summary, level, estimated_minutes, position, is_required, prerequisites[], lessons[]`) ; chaque leçon : `code, position` (figée par l'édition)`, kind, estimated_minutes, title, locale, jurisdiction_specific, next_review_due`. `404` pour un programme inconnu, en brouillon, privé, sans édition publiée ou dont l'édition est incomplète ou incohérente |
 
-Pour chaque leçon, la version publiée retenue est, dans l'ordre : langue demandée + juridiction du programme, langue demandée commune, langue de repli + juridiction, langue de repli commune.
+Depuis 2.2.2-c, chaque leçon est servie dans la version **citée par l'édition publiée** : celle de la langue demandée si l'édition la cite, sinon la version française citée. Aucune autre version publiée n'est jamais choisie à sa place. La règle d'exposition figure dans [`VALIDATION-PHASE2.2.2C.md`](VALIDATION-PHASE2.2.2C.md).
 
 ### Identité et accès (Phase 2.1)
 

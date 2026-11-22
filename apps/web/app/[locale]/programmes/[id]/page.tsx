@@ -15,6 +15,7 @@ export default async function ProgramPage({ params }: { params: Promise<{ locale
   if (!isValid("uuid", id)) notFound();
   const t = getDictionary(locale);
   const program = await orNotFound(api.program(id, locale));
+  const titles = new Map(program.modules.map((m) => [m.code, m.title]));
   const list = `/${locale}/programmes?j=${encodeURIComponent(program.jurisdiction_code)}&p=${encodeURIComponent(program.profession_code)}`;
 
   return (
@@ -64,6 +65,12 @@ export default async function ProgramPage({ params }: { params: Promise<{ locale
                 {m.is_required ? t.program.required : t.program.optional}
               </p>
               {m.summary ? <p className="mt-2">{m.summary}</p> : null}
+              {m.prerequisites.length > 0 ? (
+                <p className="mt-2 text-sm" data-testid="module-prerequisites">
+                  <span className="font-semibold">{t.program.prerequisites}</span>{" "}
+                  {m.prerequisites.map((code) => titles.get(code) ?? code).join(", ")}
+                </p>
+              ) : null}
               {m.lessons.length === 0 ? (
                 <p className="mt-3 text-fg-muted">{t.program.noLessons}</p>
               ) : (
