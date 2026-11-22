@@ -118,7 +118,8 @@ jobs:
           RUSTFS_ADDRESS: 0.0.0.0:9000
         ports: ["9000:9000"]
         volumes:
-          - /tmp/rustfs-ci-data:/data
+          # Volume nommé (comme Compose) : il hérite des droits de /data dans l'image (RustFS n'est pas root).
+          - rustfs-ci-data:/data
         options: >-
           --health-cmd "curl -fsS http://127.0.0.1:9000/health/ready || exit 1" --health-interval 5s --health-timeout 5s --health-retries 30
     env:
