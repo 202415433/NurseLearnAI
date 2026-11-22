@@ -75,6 +75,24 @@ class Settings(BaseSettings):
     # juridiques). Les programmes non médicaux (démonstration, tests) restent publiables.
     medical_publication_enabled: bool = False
 
+    # Médias protégés (étape 2.2.3-b, ADR-0011, D15–D24). Stockage S3 PRIVÉ (RustFS) : aucune URL
+    # publique ni présignée n'est jamais produite ; le frontend n'accède jamais au stockage.
+    s3_endpoint: str | None = None
+    s3_access_key: str | None = None
+    s3_secret_key: str | None = None
+    s3_region: str = "us-east-1"
+    media_quarantine_bucket: str = "nl-media-quarantine"
+    media_clean_bucket: str = "nl-media-clean"
+    # Réservation d'un téléversement : durée de validité (la base impose 24 h au plus).
+    media_upload_ttl_minutes: int = Field(60, ge=5, le=24 * 60)
+    # D16 : téléversements (réservations) par heure.
+    media_uploads_per_hour_user: int = Field(30, ge=0)
+    media_uploads_per_hour_org: int = Field(300, ge=0)
+    # S5 : analyse des formats dans un processus séparé, borné en mémoire, CPU et durée.
+    media_sandbox_timeout_seconds: int = Field(60, ge=5, le=600)
+    media_sandbox_memory_mib: int = Field(768, ge=256, le=4096)
+    media_tmp_dir: str | None = None
+
     @model_validator(mode="after")
     def _production_guards(self) -> Settings:
         if self.app_env == "production" and any(o.strip() == "*" for o in self.cors_origins):

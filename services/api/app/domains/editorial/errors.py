@@ -55,6 +55,14 @@ CODES: dict[str, tuple[int, str, str]] = {
     "empty_release": (422, "publication-requirements", "L'édition ne contient aucune version de module"),
     "empty_module_version": (422, "publication-requirements", "La version de module ne contient aucune leçon"),
     "empty_content": (422, "publication-requirements", "La leçon n'a pas de contenu"),
+    # 0007 (2.2.3-a/b) : médias protégés.
+    "quota_exceeded": (413, "quota-exceeded", "Quota de stockage dépassé"),
+    "quota_below_usage": (409, "editorial-state-conflict", "Quota inférieur à l'occupation actuelle"),
+    "invalid_reservation": (409, "reservation-invalid", "Réservation de téléversement invalide ou expirée"),
+    "born_pending": (422, "invalid-input", "Un média naît en attente de téléversement"),
+    "legal_hold": (409, "editorial-state-conflict", "Média sous conservation légale"),
+    "reported": (409, "editorial-state-conflict", "Média lié à un signalement de contenu"),
+    "untraceable_verdict": (409, "editorial-state-conflict", "Verdict antivirus non traçable"),
     # 0007 (2.2.3-a) : une version de leçon ne quitte pas le brouillon avec un média non validé.
     "media_not_clean": (422, "publication-requirements", "Média non validé par l'antivirus rattaché à la version"),
     "missing_captions": (422, "publication-requirements", "Vidéo sans sous-titres validés (WCAG 1.2.2)"),

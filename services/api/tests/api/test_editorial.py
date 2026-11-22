@@ -315,7 +315,10 @@ def approved_chain(
 # --------------------------------------------------------------------------------------------
 def test_route_inventory_and_no_direct_publication(api: TestClient) -> None:
     paths = api.app.openapi()["paths"]  # type: ignore[attr-defined]
-    ops = [(m.upper(), p) for p, item in paths.items() if p.startswith(E) for m in item]
+    # Les médias (2.2.3-b, /editorial/media) ont leur propre inventaire (test_media_upload.py).
+    ops = [
+        (m.upper(), p) for p, item in paths.items() if p.startswith(E) and not p.startswith(f"{E}/media") for m in item
+    ]
     assert len(ops) == 37
     publishing = [p for _, p in ops if p.endswith("/publish")]
     assert publishing == [f"{E}/releases/{{release_id}}/publish"]  # aucune publication de leçon ou de module
@@ -1067,5 +1070,7 @@ def test_delete_never_removes_submitted_referenced_or_historical_data(
     assert audit.action == "content.deleted" and str(audit.actor_user_id) == w.author.user_id
     # Aucune route ne supprime une décision ou un historique d'apprentissage.
     paths = api.app.openapi()["paths"]  # type: ignore[attr-defined]
-    deletable = sorted(p for p, item in paths.items() if p.startswith(E) and "delete" in item)
+    deletable = sorted(
+        p for p, item in paths.items() if p.startswith(E) and not p.startswith(f"{E}/media") and "delete" in item
+    )
     assert deletable == [f"{E}/lesson-versions/{{version_id}}", f"{E}/module-versions/{{version_id}}"]
