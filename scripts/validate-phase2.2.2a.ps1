@@ -38,7 +38,7 @@ function Psql([string]$sql) { (docker compose exec -T postgres psql -U $PGU -d $
 Log "NurseLearn AI — validation étape 2.2.2-a — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_phase_2_2_2a_ou_ulterieure" ($branch -match '^phase-2\.2\.2' -or $branch -eq "main") $branch
+Result "branche_phase_2_2_2a_ou_ulterieure" ($branch -match '^phase-2\.2\.[2-9]' -or $branch -eq "main") $branch
 
 # -----------------------------------------------------------------------------
 # 1. Non-régression complète (2.2.1 → 2.1 → 2.0 → 1.2)
@@ -68,12 +68,12 @@ if ($reg12) {
 # 2. Contrôles de l'étape 2.2.2-a (base de développement)
 # -----------------------------------------------------------------------------
 $rev = Psql "SELECT version_num FROM alembic_version"
-Result "migration_0006_en_tete" ($rev -eq "0006_independent_versions") $rev
+Result "migration_0006_ou_ulterieure" ($rev -match '^000[6-9]_') $rev
 $tables = Psql "SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_name IN ('module_versions','module_version_lessons','module_version_lesson_versions','program_release_modules','program_release_prerequisites')"
 Result "cinq_nouvelles_tables" ($tables -eq "module_version_lesson_versions,module_version_lessons,module_versions,program_release_modules,program_release_prerequisites") $tables
 # Même périmètre que verify_head.sql : tables du modèle, hors table technique alembic_version.
 $total = Psql "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'alembic_version'"
-Result "71_tables" ($total -eq "71") "tables=$total"
+Result "au_moins_71_tables" ([int]"0$total" -ge 71) "tables=$total"
 $idx = Psql "SELECT count(*) FROM pg_indexes WHERE indexname = 'ux_lesson_versions_one_published'"
 Result "index_unicite_publication_leve" ($idx -eq "0") "index=$idx"
 $legacy = Psql "SELECT count(*) FILTER (WHERE structure = 'manifest_v1') || '|' || count(*) FILTER (WHERE structure = 'module_versions') FROM program_releases"

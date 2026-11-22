@@ -956,6 +956,7 @@ def test_error_translation_codes() -> None:
     assert code_for("42501", None, "Auto-approbation interdite : x") == "self_approval"
     assert code_for("42501", None, "message inconnu") == "forbidden"
     assert code_for("23505", None, "duplicate") is None
+    assert {"media_not_clean", "missing_captions"} <= set(CODES)  # garde des médias (0007)
     assert all(c in CODES for _, c in LEGACY_MESSAGES)
 
 

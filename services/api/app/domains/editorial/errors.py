@@ -55,6 +55,9 @@ CODES: dict[str, tuple[int, str, str]] = {
     "empty_release": (422, "publication-requirements", "L'édition ne contient aucune version de module"),
     "empty_module_version": (422, "publication-requirements", "La version de module ne contient aucune leçon"),
     "empty_content": (422, "publication-requirements", "La leçon n'a pas de contenu"),
+    # 0007 (2.2.3-a) : une version de leçon ne quitte pas le brouillon avec un média non validé.
+    "media_not_clean": (422, "publication-requirements", "Média non validé par l'antivirus rattaché à la version"),
+    "missing_captions": (422, "publication-requirements", "Vidéo sans sous-titres validés (WCAG 1.2.2)"),
     "missing_author": (422, "publication-requirements", "Auteur non renseigné"),
     "missing_base_locale": (422, "publication-requirements", "Chaque leçon exige une version française"),
     "prerequisite_cycle": (422, "publication-requirements", "Prérequis circulaires"),
