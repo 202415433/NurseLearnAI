@@ -70,7 +70,8 @@ WHERE (r.code = 'student'          AND p.code IN ('catalog:read','learning:parti
                                                   'exam:create','exam:grade','competency:verify','cohort:manage','student:view_progress'))
    OR (r.code = 'medical_reviewer' AND p.code IN ('catalog:read','content:review','content:publish'))
    OR (r.code = 'org_admin'        AND p.code IN ('catalog:read','cohort:manage','student:view_progress','org:manage'))
-   OR (r.code = 'admin')
+   -- media:scan (0007) : réservée au rôle de service media_scanner, jamais à l'administrateur.
+   OR (r.code = 'admin'            AND p.code <> 'media:scan')
 ON CONFLICT DO NOTHING;
 
 -- Métiers par juridiction : jamais d'équivalence implicite entre titres (§9).

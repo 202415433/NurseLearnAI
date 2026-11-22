@@ -68,9 +68,9 @@ if ($reg12) {
 # 2. Contrôles 2.2.2-b (lecture seule)
 # -----------------------------------------------------------------------------
 $rev = Psql "SELECT version_num FROM alembic_version"
-Result "aucune_nouvelle_migration" ($rev -eq "0006_independent_versions") $rev
+Result "migration_0006_ou_ulterieure" ($rev -match '^000[6-9]_') $rev
 $total = Psql "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'alembic_version'"
-Result "71_tables_inchangees" ($total -eq "71") "tables=$total"
+Result "au_moins_71_tables" ([int]"0$total" -ge 71) "tables=$total"
 $pilot = Psql "SELECT p.status || '|' || (SELECT count(*) FROM program_releases r WHERE r.program_id = p.id) FROM programs p WHERE p.code = 'pab-qc-socle'"
 Result "pilote_pab_toujours_en_brouillon" ($pilot -eq "draft|0") "statut|éditions = $pilot"
 $med = Psql "SELECT count(*) FROM programs WHERE is_medical AND status = 'published'"

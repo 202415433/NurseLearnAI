@@ -7,7 +7,7 @@ DECLARE
 BEGIN
   SELECT count(*) INTO n_tables FROM information_schema.tables
    WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'alembic_version';
-  IF n_tables <> 71 THEN RAISE EXCEPTION 'Attendu 71 tables (60 + 2 de 0004 + 4 de 0005 + 5 de 0006), trouvé %', n_tables; END IF;
+  IF n_tables <> 75 THEN RAISE EXCEPTION 'Attendu 75 tables (60 + 2 de 0004 + 4 de 0005 + 5 de 0006 + 4 de 0007), trouvé %', n_tables; END IF;
 
   SELECT count(*) INTO n_missing FROM unnest(ARRAY['users','roles','profiles','countries','jurisdictions','professions',
     'specialties','programs','modules','lessons','learning_objectives','competencies','learning_resources',
@@ -40,6 +40,13 @@ BEGIN
      OR to_regprocedure('nl_release_lessons(uuid)') IS NULL
      OR to_regclass('public.ux_lesson_versions_one_published') IS NOT NULL THEN
     RAISE EXCEPTION 'Migration 0006 non appliquée (versions de modules ou indépendance des éditions absentes)'; END IF;
+  IF to_regclass('public.media_assets') IS NULL OR to_regclass('public.media_scan_events') IS NULL
+     OR to_regclass('public.lesson_version_media') IS NULL OR to_regclass('public.media_usage') IS NULL
+     OR to_regprocedure('nl_media_expire_reservations()') IS NULL
+     OR NOT EXISTS (SELECT 1 FROM permissions WHERE code = 'media:scan')
+     OR EXISTS (SELECT 1 FROM role_permissions WHERE permission_code = 'media:scan')
+     OR to_regclass('public.learning_resources') IS NULL THEN
+    RAISE EXCEPTION 'Migration 0007 non appliquée ou permission media:scan attribuée prématurément'; END IF;
   SELECT count(*) INTO n_trg FROM pg_trigger WHERE NOT tgisinternal;
   SELECT count(*) INTO n_idx FROM pg_indexes WHERE schemaname = 'public';
 

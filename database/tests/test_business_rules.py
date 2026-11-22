@@ -35,7 +35,8 @@ def _perms(db, role: str) -> set[str]:
 
 def test_role_permission_matrix(db):
     all_perms = set(db.sql("SELECT code FROM permissions").splitlines())
-    assert _perms(db, "admin") == all_perms
+    # media:scan (0007) : réservée au rôle de service media_scanner, jamais à l'administrateur (S14).
+    assert _perms(db, "admin") == all_perms - {"media:scan"}
     student = _perms(db, "student")
     assert student == {"catalog:read", "learning:participate", "tutor:use"}
     instructor = _perms(db, "instructor")

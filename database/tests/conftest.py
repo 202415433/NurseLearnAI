@@ -74,6 +74,7 @@ MIGRATIONS = [
     "0004_identity",
     "0005_learning_engine",
     "0006_independent_program_versions",
+    "0007_secure_media_foundation",
 ]
 
 

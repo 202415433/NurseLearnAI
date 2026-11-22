@@ -39,7 +39,7 @@ function Psql([string]$sql) { (docker compose exec -T postgres psql -U $PGU -d $
 Log "NurseLearn AI — validation étape 2.2.2-c — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_phase_2_2_2c" ($branch -eq "phase-2.2.2c-public-catalog") $branch
+Result "branche_phase_2_2_2c_ou_ulterieure" ($branch -match '^phase-2\.2\.(2c|[3-9])' -or $branch -eq "main") $branch
 
 # -----------------------------------------------------------------------------
 # 1. Non-régression complète (2.2.2-b → 2.2.2-a → 2.2.1 → 2.1 → 2.0 → 1.2)
@@ -70,9 +70,9 @@ if ($reg12) {
 # 2. Contrôles 2.2.2-c (lecture seule)
 # -----------------------------------------------------------------------------
 $rev = Psql "SELECT version_num FROM alembic_version"
-Result "aucune_nouvelle_migration" ($rev -eq "0006_independent_versions") $rev
+Result "migration_0006_ou_ulterieure" ($rev -match '^000[6-9]_') $rev
 $total = Psql "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'alembic_version'"
-Result "71_tables_inchangees" ($total -eq "71") "tables=$total"
+Result "au_moins_71_tables" ([int]"0$total" -ge 71) "tables=$total"
 $med = Psql "SELECT count(*) FROM programs WHERE is_medical AND status = 'published'"
 Result "aucun_programme_medical_publie" ($med -eq "0") "programmes médicaux publiés = $med"
 
