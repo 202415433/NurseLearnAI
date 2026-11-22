@@ -1,5 +1,7 @@
 # Préparation — Étape 2.2.3 : médias et documents protégés
 
+> Plan détaillé : [`PHASE2.2.3-PLAN.md`](PHASE2.2.3-PLAN.md) · décision antivirus : [ADR-0011](adr/0011-medias-antivirus.md) (proposée).
+>
 > Document de préparation uniquement : **aucun développement 2.2.3** n'est engagé. Prérequis : la
 > fusion de 2.2.2-c, après autorisation.
 

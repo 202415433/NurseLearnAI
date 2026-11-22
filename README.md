@@ -16,8 +16,8 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 | 2.2.1 — Modèle pédagogique et règles éditoriales | ✅ intégré dans `main` (#8), CI 7/7 — [`docs/VALIDATION-PHASE2.2.1.md`](docs/VALIDATION-PHASE2.2.1.md) · [ADR-0009](docs/adr/0009-editions-figees-et-workflow-editorial.md) · [préparation 2.2.2](docs/PHASE2.2.2-READINESS.md) |
 | 2.2.2-a — Versions de modules indépendantes (migration 0006, ADR-0010) | ✅ intégrée dans `main` (#10), CI 7/7 — [`docs/VALIDATION-PHASE2.2.2A.md`](docs/VALIDATION-PHASE2.2.2A.md) · [préparation 2.2.2-b](docs/PHASE2.2.2B-READINESS.md) |
 | 2.2.2-b — API éditoriale (`/api/v1/editorial`, 37 opérations) | ✅ intégrée dans `main` (#12), CI 7/7 — [`docs/VALIDATION-PHASE2.2.2B.md`](docs/VALIDATION-PHASE2.2.2B.md) |
-| 2.2.2-c — Catalogue lu depuis l'édition publiée | 🧪 validée localement, en attente d'autorisation d'intégration — [`docs/VALIDATION-PHASE2.2.2C.md`](docs/VALIDATION-PHASE2.2.2C.md) |
-| 2.2.3 — Médias et documents protégés | 📝 préparation — [`docs/PHASE2.2.3-READINESS.md`](docs/PHASE2.2.3-READINESS.md) |
+| 2.2.2-c — Catalogue lu depuis l'édition publiée | ✅ intégrée dans `main` (#13), CI 7/7 — [`docs/VALIDATION-PHASE2.2.2C.md`](docs/VALIDATION-PHASE2.2.2C.md) |
+| 2.2.3 — Médias et documents protégés | 📝 plan proposé, décisions D7 et D14–D23 à confirmer — [`docs/PHASE2.2.3-PLAN.md`](docs/PHASE2.2.3-PLAN.md) · [ADR-0011](docs/adr/0011-medias-antivirus.md) (proposée) |
 | 2.2.3 à 2.5 | 🗓️ planifiées — [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
 | 3 à 7 | 🗓️ planifiées — voir [`docs/06-roadmap.md`](docs/06-roadmap.md) |
 
