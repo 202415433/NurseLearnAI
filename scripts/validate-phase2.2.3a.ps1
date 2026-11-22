@@ -38,7 +38,8 @@ function Psql([string]$sql) { (docker compose exec -T postgres psql -U $PGU -d $
 Log "NurseLearn AI — validation étape 2.2.3-a — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_phase_2_2_3" ($branch -eq "phase-2.2.3-secure-media") $branch
+# Accepte aussi les sous-étapes suivantes (phase-2.2.3b-…), qui enchaînent ce script en non-régression.
+Result "branche_phase_2_2_3" ($branch -like "phase-2.2.3*") $branch
 $dirty = (git status --porcelain --untracked-files=no 2>$null | Where-Object { $_ -notmatch 'docs/validation-logs' }) -join " "
 Result "git_sans_modification_locale" ([string]::IsNullOrWhiteSpace($dirty)) $dirty
 $hist = (git diff --name-only origin/main -- database/schema/0001_core.sql database/schema/0002_pgvector.sql database/schema/0003_business_rules.sql database/schema/0004_identity.sql database/schema/0005_learning_engine.sql database/schema/0006_independent_program_versions.sql 2>$null) -join " "

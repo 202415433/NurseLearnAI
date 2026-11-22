@@ -210,10 +210,13 @@ Result "migrations_a_jour" ("$rev" -match '^000[3-9]_') "$rev"
 # -----------------------------------------------------------------------------
 Psql "postgres" "DROP DATABASE IF EXISTS nl_validation_api WITH (FORCE)" | Out-Null
 Psql "postgres" "CREATE DATABASE nl_validation_api" | Out-Null
+# Médias (2.2.3-b) : les tests de téléversement utilisent le RustFS réel de la pile (compartiments de test dédiés).
+$S3AK = if ($envVars['S3_ACCESS_KEY']) { $envVars['S3_ACCESS_KEY'] } else { "nurselearn" }
 $r = Run "pytest : base, migrations, API, unitaires (bases jetables)" {
     docker run --rm --network $net -v "${root}:/repo" -w /repo `
         -e "DATABASE_URL=postgresql+asyncpg://${PGU}:${PGPW}@postgres:5432/nl_validation_api" `
         -e "REDIS_URL=redis://:$($envVars['REDIS_PASSWORD'])@redis:6379/0" `
+        -e NL_TEST_S3_ENDPOINT=http://s3:9000 -e NL_TEST_S3_KIND=rustfs -e "S3_ACCESS_KEY=$S3AK" -e "S3_SECRET_KEY=$($envVars['S3_SECRET_KEY'])" `
         -e DEBIAN_FRONTEND=noninteractive -e MAILPIT_URL=http://mailpit:8025 -e SMTP_HOST=mailpit -e SMTP_PORT=1025 -e NL_TEST_PGHOST=postgres -e NL_TEST_PGPORT=5432 -e NL_TEST_PGUSER=$PGU -e PGPASSWORD=$PGPW -e PYTHONDONTWRITEBYTECODE=1 `
         python:3.12-slim sh -c "apt-get update -qq >/dev/null && apt-get install -y -qq postgresql-client >/dev/null && cd services/api && pip install -q --disable-pip-version-check --root-user-action=ignore -e '.[dev]' && alembic upgrade head && python -m app.seed && cd /repo && python -m pytest -q -rs -p no:cacheprovider database/tests services/api/tests"
 }

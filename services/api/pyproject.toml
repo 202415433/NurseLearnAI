@@ -19,6 +19,14 @@ dependencies = [
   "redis>=5.0,<7",
   # Hachage des mots de passe (Argon2id, recommandation OWASP).
   "argon2-cffi>=23.1,<26",
+  # Médias protégés (2.2.3-b, D20) : bibliothèques maintenues, licences compatibles, auditées (pip-audit).
+  # Pillow (HPND) : décodage et réencodage des images ; pypdf (BSD-3) : analyse structurelle des PDF ;
+  # boto3 (Apache-2.0) : client S3 du stockage privé RustFS.
+  "pillow>=13,<14",
+  "pypdf>=6.21.4,<7",
+  "boto3>=1.35,<2",
+  # Plancher de sécurité d'une dépendance transitive de FastAPI (CVE-2026-114603, CVE-2026-126360).
+  "opentelemetry-api>=1.45.2",
 ]
 
 [project.optional-dependencies]

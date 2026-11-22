@@ -81,6 +81,8 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+      s3:
+        condition: service_healthy
     environment:
       APP_ENV: ${APP_ENV:-development}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-nurselearn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nurselearn}
@@ -113,6 +115,13 @@ services:
       REGISTER_PER_HOUR_PER_IP: ${REGISTER_PER_HOUR_PER_IP:-50}
       LOGIN_PER_10MIN_PER_IP: ${LOGIN_PER_10MIN_PER_IP:-100}
       EMAIL_ACTIONS_PER_HOUR_PER_IP: ${EMAIL_ACTIONS_PER_HOUR_PER_IP:-50}
+      # Médias protégés (2.2.3-b) : stockage S3 PRIVÉ RustFS, joint uniquement par le réseau interne.
+      # Aucune URL publique ni présignée ; le navigateur n'accède jamais au stockage.
+      S3_ENDPOINT: http://s3:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-nurselearn}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY doit être défini}
+      MEDIA_QUARANTINE_BUCKET: ${MEDIA_QUARANTINE_BUCKET:-nl-media-quarantine}
+      MEDIA_CLEAN_BUCKET: ${MEDIA_CLEAN_BUCKET:-nl-media-clean}
     ports:
       - "127.0.0.1:${API_PORT:-28000}:8000"
 

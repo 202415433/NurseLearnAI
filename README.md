@@ -17,7 +17,7 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 | 2.2.2-a — Versions de modules indépendantes (migration 0006, ADR-0010) | ✅ intégrée dans `main` (#10), CI 7/7 — [`docs/VALIDATION-PHASE2.2.2A.md`](docs/VALIDATION-PHASE2.2.2A.md) · [préparation 2.2.2-b](docs/PHASE2.2.2B-READINESS.md) |
 | 2.2.2-b — API éditoriale (`/api/v1/editorial`, 37 opérations) | ✅ intégrée dans `main` (#12), CI 7/7 — [`docs/VALIDATION-PHASE2.2.2B.md`](docs/VALIDATION-PHASE2.2.2B.md) |
 | 2.2.2-c — Catalogue lu depuis l'édition publiée | ✅ intégrée dans `main` (#13), CI 7/7 — [`docs/VALIDATION-PHASE2.2.2C.md`](docs/VALIDATION-PHASE2.2.2C.md) |
-| 2.2.3 — Médias et documents protégés | 🧪 2.2.3-a (migration 0007, invariants, quotas) validée localement, en attente d'autorisation — [`docs/VALIDATION-PHASE2.2.3A.md`](docs/VALIDATION-PHASE2.2.3A.md) · [`docs/PHASE2.2.3-PLAN.md`](docs/PHASE2.2.3-PLAN.md) · [ADR-0011](docs/adr/0011-medias-antivirus.md) |
+| 2.2.3 — Médias et documents protégés | ✅ 2.2.3-a (migration 0007, invariants, quotas) — [`docs/VALIDATION-PHASE2.2.3A.md`](docs/VALIDATION-PHASE2.2.3A.md) · 🧪 2.2.3-b (téléversement sécurisé, quarantaine privée) validée sous Windows (19/19, RustFS réel), en attente d'autorisation de push — [`docs/VALIDATION-PHASE2.2.3B.md`](docs/VALIDATION-PHASE2.2.3B.md) · [`docs/PHASE2.2.3C-READINESS.md`](docs/PHASE2.2.3C-READINESS.md) · [`docs/PHASE2.2.3-PLAN.md`](docs/PHASE2.2.3-PLAN.md) · [ADR-0011](docs/adr/0011-medias-antivirus.md) |
 | 2.2.3 à 2.5 | 🗓️ planifiées — [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
 | 3 à 7 | 🗓️ planifiées — voir [`docs/06-roadmap.md`](docs/06-roadmap.md) |
 
@@ -93,6 +93,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.2a.ps1     
 powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.2b.ps1       # étape 2.2.2-b (inclut 2.2.2-a et antérieures)
 powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.2c.ps1       # étape 2.2.2-c (inclut 2.2.2-b et antérieures)
 powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.3a.ps1       # étape 2.2.3-a (inclut 2.2.2-c et antérieures)
+powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.3b.ps1       # étape 2.2.3-b (inclut 2.2.3-a et antérieures)
 ```
 
 Seul le rôle étudiant s'obtient par inscription. Les rôles formateur, relecteur médical et administrateur d'établissement s'obtiennent uniquement par invitation (page « Mon compte » → « Gérer les invitations ») ; un administrateur d'établissement ne peut inviter que des formateurs dans son établissement. En production, `TOKEN_HASH_KEY` (≥ 32 caractères) et `SESSION_COOKIE_SECURE=true` sont obligatoires.
