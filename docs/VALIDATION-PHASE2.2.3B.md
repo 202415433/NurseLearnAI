@@ -126,9 +126,16 @@ Couverture de `test_media_upload.py` :
 - **Exposition** : aucune route de diffusion ; lecture S3 anonyme refusée (403 sur RustFS réel).
 - **Audit** : aucune donnée sensible.
 
-**À confirmer sur RustFS réel** : la suite tourne en CI (service RustFS du job `api`) et sous Windows
-(`validate-phase1.2.ps1` transmet `NL_TEST_S3_ENDPOINT=http://s3:9000`). Le contrôle
-`tests_televersement_executes_sur_rustfs` vérifie qu'aucun test n'a été ignoré faute de stockage.
+**Confirmé sur RustFS réel (Windows, 21/11/2026, commit `ea60d8c`)** : `validate-phase2.2.3b.ps1` donne
+**19/19 contrôles réussis, 0 échec**, après une non-régression complète sans échec (2.2.3-a, 18/18, puis 2.2.2-c → 1.2).
+- pytest complet sur PostgreSQL, Redis et **RustFS réels** de la pile : **319 réussis, 0 ignoré** (3 min 56 s).
+- `tests_televersement_executes_sur_rustfs` : 0 test ignoré faute de stockage.
+- Lecture anonyme du compartiment de quarantaine : **403**.
+- Réservation et téléversement anonymes : **401** (`application/problem+json`).
+- Bibliothèques dans l'image de l'API : Pillow 13.0.0, pypdf 6.21.4, boto3 1.44.9.
+- Services `postgres`, `redis`, `s3`, `api` et `web` en bonne santé.
+
+Journal : `docs/validation-logs/phase2.2.3b-20261121-223505.log` (non versionné).
 
 ## 5. Quotas et performances
 
