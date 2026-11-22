@@ -7,7 +7,7 @@
 --
 -- Tables : media_assets, media_scan_events (ajout seul), lesson_version_media, media_usage.
 -- Erreurs : SQLSTATE stable + HINT 'nl:<code>' (traduites par l'API, convention 0006).
--- Unités : octets ; 1 Mio = 1 048 576 ; 1 Gio = 1 073 741 824.
+-- Unités BINAIRES : octets ; 1 Mio = 1 048 576 octets ; 1 Gio = 1 073 741 824 octets.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -28,6 +28,11 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
+
+-- Installations existantes : si une permission media:scan existait déjà (créée hors migration),
+-- toute attribution à un autre rôle que media_scanner est retirée AVANT la pose de la garde.
+DELETE FROM role_permissions rp USING roles r
+ WHERE rp.role_id = r.id AND rp.permission_code = 'media:scan' AND r.code <> 'media_scanner';
 
 CREATE TRIGGER trg_role_permissions_media_scan BEFORE INSERT OR UPDATE ON role_permissions
   FOR EACH ROW EXECUTE FUNCTION nl_guard_media_scan_permission();
@@ -60,17 +65,15 @@ CREATE TABLE media_usage (
   scope_kind      text NOT NULL CHECK (scope_kind IN ('user', 'organization', 'platform')),
   user_id         uuid REFERENCES users(id) ON DELETE RESTRICT,
   organization_id uuid REFERENCES organizations(id) ON DELETE RESTRICT,
+  -- Seul le QUOTA est stocké : l'occupation et les réservations sont DÉRIVÉES de media_assets
+  -- (nl_media_scope_usage). Aucun compteur modifiable, donc aucun compteur falsifiable ni négatif.
   quota_bytes     bigint NOT NULL CHECK (quota_bytes >= 0),
-  used_bytes      bigint NOT NULL DEFAULT 0 CHECK (used_bytes >= 0),
-  reserved_bytes  bigint NOT NULL DEFAULT 0 CHECK (reserved_bytes >= 0),
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT ck_media_usage_scope CHECK (
     (scope_kind = 'user'         AND user_id IS NOT NULL AND organization_id IS NULL) OR
     (scope_kind = 'organization' AND organization_id IS NOT NULL AND user_id IS NULL) OR
-    (scope_kind = 'platform'     AND user_id IS NULL AND organization_id IS NULL)),
-  -- Dernier rempart : jamais de dépassement, même si une fonction était contournée.
-  CONSTRAINT ck_media_usage_within_quota CHECK (used_bytes + reserved_bytes <= quota_bytes)
+    (scope_kind = 'platform'     AND user_id IS NULL AND organization_id IS NULL))
 );
 CREATE UNIQUE INDEX ux_media_usage_user ON media_usage (user_id) WHERE scope_kind = 'user';
 CREATE UNIQUE INDEX ux_media_usage_org ON media_usage (organization_id) WHERE scope_kind = 'organization';
@@ -168,9 +171,13 @@ CREATE TABLE lesson_version_media (
 CREATE INDEX ix_lesson_version_media_media ON lesson_version_media (media_id);
 
 -- -----------------------------------------------------------------------------
--- 4. Registre des quotas (S10) : réservation atomique, sans dépassement ni négatif
+-- 4. Quotas (S10) : occupation DÉRIVÉE, réservation atomique sous verrou, sans dépassement
 -- -----------------------------------------------------------------------------
--- Ligne de portée (créée à la première utilisation avec le quota par défaut).
+-- Aucune autorisation ne repose sur pg_trigger_depth() ni sur un drapeau de session : il n'existe
+-- pas de compteur stocké à protéger. L'occupation d'une portée est calculée à partir des médias,
+-- dont chaque changement est lui-même contrôlé (acteur déclaré, permissions, transitions).
+
+-- Ligne de quota d'une portée (créée à la première utilisation, au quota par défaut).
 CREATE OR REPLACE FUNCTION nl_media_usage_row(p_scope text, p_user uuid, p_org uuid) RETURNS uuid
 LANGUAGE plpgsql AS $$
 DECLARE v_id uuid;
@@ -186,68 +193,73 @@ BEGIN
   RETURN v_id;
 END $$;
 
--- Ajuste réservé et utilisé d'une portée. Le verrou de ligne de l'UPDATE sérialise les demandes
--- concurrentes ; la condition est réévaluée après l'attente (READ COMMITTED) : aucun dépassement.
-CREATE OR REPLACE FUNCTION nl_media_ledger(p_usage uuid, p_reserved bigint, p_used bigint) RETURNS void
+-- Occupation et réservations d'une portée, en octets.
+--   occupé  = tailles reçues des médias non purgés (supprimés logiquement compris, jusqu'à la purge) ;
+--   réservé = tailles déclarées des réservations en cours (non supprimées, non échues).
+CREATE OR REPLACE FUNCTION nl_media_scope_usage(p_scope text, p_user uuid, p_org uuid,
+                                                OUT used_bytes bigint, OUT reserved_bytes bigint)
+LANGUAGE sql VOLATILE AS $$
+  SELECT coalesce(sum(byte_size) FILTER (WHERE state <> 'pending_upload' AND purged_at IS NULL), 0)::bigint,
+         coalesce(sum(declared_bytes) FILTER (WHERE state = 'pending_upload' AND deleted_at IS NULL
+                                                AND reservation_expires_at > now()), 0)::bigint
+    FROM media_assets
+   WHERE (p_scope = 'user' AND uploaded_by = p_user)
+      OR (p_scope = 'organization' AND organization_id = p_org)
+      OR (p_scope = 'platform' AND organization_id IS NULL)
+$$;
+
+-- Réserve p_bytes dans une portée : verrou de ligne sur le quota (sérialise les demandes de la
+-- portée), PUIS calcul de l'occupation (nouvel instantané pris après le verrou, READ COMMITTED) :
+-- deux réservations concurrentes ne peuvent pas se fonder sur le même état.
+CREATE OR REPLACE FUNCTION nl_media_reserve(p_scope text, p_user uuid, p_org uuid, p_bytes bigint) RETURNS void
 LANGUAGE plpgsql AS $$
-DECLARE v_ok uuid;
+DECLARE v_row uuid; v_quota bigint; v_used bigint; v_reserved bigint;
 BEGIN
-  UPDATE media_usage
-     SET reserved_bytes = reserved_bytes + p_reserved, used_bytes = used_bytes + p_used, updated_at = now()
-   WHERE id = p_usage
-     AND used_bytes + reserved_bytes + p_reserved + p_used <= quota_bytes
-     AND reserved_bytes + p_reserved >= 0 AND used_bytes + p_used >= 0
-  RETURNING id INTO v_ok;
-  IF v_ok IS NULL THEN
-    IF EXISTS (SELECT 1 FROM media_usage WHERE id = p_usage
-               AND (reserved_bytes + p_reserved < 0 OR used_bytes + p_used < 0)) THEN
-      RAISE EXCEPTION 'Compteur de stockage négatif refusé' USING ERRCODE = 'check_violation', HINT = 'nl:quota_negative';
-    END IF;
-    RAISE EXCEPTION 'Quota de stockage dépassé' USING ERRCODE = 'check_violation', HINT = 'nl:quota_exceeded';
+  v_row := nl_media_usage_row(p_scope, p_user, p_org);
+  SELECT quota_bytes INTO v_quota FROM media_usage WHERE id = v_row FOR UPDATE;
+  IF v_quota IS NULL THEN
+    RAISE EXCEPTION 'Ligne de quota introuvable (portée %)', p_scope USING ERRCODE = 'check_violation', HINT = 'nl:quota_exceeded';
+  END IF;
+  SELECT u.used_bytes, u.reserved_bytes INTO v_used, v_reserved FROM nl_media_scope_usage(p_scope, p_user, p_org) u;
+  IF v_used + v_reserved + p_bytes > v_quota THEN
+    RAISE EXCEPTION 'Quota de stockage dépassé (portée %) : % octets occupés ou réservés + % demandés > quota de % octets',
+      p_scope, v_used + v_reserved, p_bytes, v_quota
+      USING ERRCODE = 'check_violation', HINT = 'nl:quota_exceeded';
   END IF;
 END $$;
 
--- Applique un mouvement aux deux portées d'un média : utilisateur + (établissement ou plateforme).
-CREATE OR REPLACE FUNCTION nl_media_ledger_both(p_user uuid, p_org uuid, p_reserved bigint, p_used bigint)
-RETURNS void LANGUAGE plpgsql AS $$
-BEGIN
-  -- Ordre de verrouillage constant (utilisateur, puis établissement/plateforme) : pas d'interblocage.
-  PERFORM nl_media_ledger(nl_media_usage_row('user', p_user, NULL), p_reserved, p_used);
-  IF p_org IS NULL THEN
-    PERFORM nl_media_ledger(nl_media_usage_row('platform', NULL, NULL), p_reserved, p_used);
-  ELSE
-    PERFORM nl_media_ledger(nl_media_usage_row('organization', NULL, p_org), p_reserved, p_used);
-  END IF;
-END $$;
-
--- Garde du registre : compteurs modifiables UNIQUEMENT par les déclencheurs des médias ;
--- quota modifiable seulement par un administrateur plateforme (user:manage global), audité.
+-- Garde des lignes de quota : création au quota par défaut seulement ; quota modifiable par
+-- l'administration de la plateforme (user:manage global), jamais sous l'occupation, toujours audité.
 CREATE OR REPLACE FUNCTION nl_media_usage_guard() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE v_actor uuid;
+DECLARE v_actor uuid; v_used bigint; v_reserved bigint;
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'Suppression d''une ligne de quota interdite' USING ERRCODE = 'insufficient_privilege', HINT = 'nl:forbidden';
   END IF;
   IF TG_OP = 'INSERT' THEN
-    IF pg_trigger_depth() < 2 OR NEW.used_bytes <> 0 OR NEW.reserved_bytes <> 0
-       OR NEW.quota_bytes <> nl_media_default_quota(NEW.scope_kind) THEN
-      RAISE EXCEPTION 'Ligne de quota créée hors du registre des médias' USING ERRCODE = 'insufficient_privilege', HINT = 'nl:forbidden';
+    IF NEW.quota_bytes <> nl_media_default_quota(NEW.scope_kind) THEN
+      RAISE EXCEPTION 'Une ligne de quota naît au quota par défaut (1, 5 ou 20 Gio)'
+        USING ERRCODE = 'insufficient_privilege', HINT = 'nl:forbidden';
     END IF;
+    NEW.created_at := now(); NEW.updated_at := now();
     RETURN NEW;
   END IF;
-  IF NEW.scope_kind IS DISTINCT FROM OLD.scope_kind OR NEW.user_id IS DISTINCT FROM OLD.user_id
+  IF NEW.id <> OLD.id OR NEW.scope_kind IS DISTINCT FROM OLD.scope_kind OR NEW.user_id IS DISTINCT FROM OLD.user_id
      OR NEW.organization_id IS DISTINCT FROM OLD.organization_id OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'Portée d''un quota immuable' USING ERRCODE = 'insufficient_privilege', HINT = 'nl:immutable';
-  END IF;
-  IF (NEW.used_bytes <> OLD.used_bytes OR NEW.reserved_bytes <> OLD.reserved_bytes) AND pg_trigger_depth() < 2 THEN
-    RAISE EXCEPTION 'Compteurs de stockage modifiables uniquement par le registre des médias'
-      USING ERRCODE = 'insufficient_privilege', HINT = 'nl:forbidden';
   END IF;
   IF NEW.quota_bytes <> OLD.quota_bytes THEN
     v_actor := nl_actor();
     IF NOT nl_user_has_permission(v_actor, 'user:manage', NULL) THEN
       RAISE EXCEPTION 'Modification de quota réservée à l''administration de la plateforme'
         USING ERRCODE = 'insufficient_privilege', HINT = 'nl:forbidden';
+    END IF;
+    -- La ligne est verrouillée par cet UPDATE : aucune réservation de la portée ne peut s'intercaler.
+    SELECT u.used_bytes, u.reserved_bytes INTO v_used, v_reserved
+      FROM nl_media_scope_usage(NEW.scope_kind, NEW.user_id, NEW.organization_id) u;
+    IF NEW.quota_bytes < v_used + v_reserved THEN
+      RAISE EXCEPTION 'Quota inférieur à l''occupation actuelle (% octets occupés ou réservés)', v_used + v_reserved
+        USING ERRCODE = 'check_violation', HINT = 'nl:quota_below_usage';
     END IF;
     INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, organization_id, metadata)
     VALUES (v_actor, 'media.quota_changed', 'media_usage', NEW.id::text, NEW.organization_id,
@@ -261,6 +273,15 @@ CREATE TRIGGER trg_media_usage_guard BEFORE INSERT OR UPDATE OR DELETE ON media_
   FOR EACH ROW EXECUTE FUNCTION nl_media_usage_guard();
 CREATE TRIGGER trg_media_usage_updated_at BEFORE UPDATE ON media_usage
   FOR EACH ROW EXECUTE FUNCTION nl_set_updated_at();
+CREATE TRIGGER trg_media_usage_no_truncate BEFORE TRUNCATE ON media_usage
+  FOR EACH STATEMENT EXECUTE FUNCTION nl_forbid_modification();
+
+-- Lecture des quotas (octets) : quota, occupé, réservé, disponible, par portée.
+CREATE VIEW media_usage_totals AS
+SELECT q.id, q.scope_kind, q.user_id, q.organization_id, q.quota_bytes, u.used_bytes, u.reserved_bytes,
+       q.quota_bytes - u.used_bytes - u.reserved_bytes AS available_bytes
+  FROM media_usage q
+  CROSS JOIN LATERAL nl_media_scope_usage(q.scope_kind, q.user_id, q.organization_id) u;
 
 -- -----------------------------------------------------------------------------
 -- 5. Protections d'un média (références, signalements, conservation légale)
@@ -320,6 +341,13 @@ BEGIN
         RAISE EXCEPTION 'Sous-titres : vidéo cible incohérente (type, établissement ou supprimée)'
           USING ERRCODE = 'check_violation', HINT = 'nl:incoherent_reference';
       END IF;
+    END IF;
+    -- Réservation : utilisateur, puis établissement ou plateforme (ordre de verrouillage constant).
+    PERFORM nl_media_reserve('user', NEW.uploaded_by, NULL, NEW.declared_bytes);
+    IF NEW.organization_id IS NULL THEN
+      PERFORM nl_media_reserve('platform', NULL, NULL, NEW.declared_bytes);
+    ELSE
+      PERFORM nl_media_reserve('organization', NULL, NEW.organization_id, NEW.declared_bytes);
     END IF;
     NEW.created_at := now(); NEW.updated_at := now();
     RETURN NEW;
@@ -486,30 +514,8 @@ BEGIN
   RETURN NEW;
 END $$;
 
--- Mouvements du registre des quotas, dans la même transaction que la transition.
-CREATE OR REPLACE FUNCTION nl_media_assets_ledger() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  IF TG_OP = 'INSERT' THEN
-    PERFORM nl_media_ledger_both(NEW.uploaded_by, NEW.organization_id, NEW.declared_bytes, 0);   -- réservation
-    RETURN NEW;
-  END IF;
-  IF OLD.state = 'pending_upload' AND NEW.state = 'quarantined' THEN
-    -- Réception : réservation convertie en occupation réelle (≤ déclarée), le reliquat est libéré.
-    PERFORM nl_media_ledger_both(NEW.uploaded_by, NEW.organization_id, -OLD.declared_bytes, NEW.byte_size);
-  ELSIF OLD.state = 'pending_upload' AND OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL THEN
-    -- Réservation expirée ou abandonnée : libération.
-    PERFORM nl_media_ledger_both(NEW.uploaded_by, NEW.organization_id, -OLD.declared_bytes, 0);
-  ELSIF OLD.purged_at IS NULL AND NEW.purged_at IS NOT NULL THEN
-    -- Purge : l'espace occupé est rendu.
-    PERFORM nl_media_ledger_both(NEW.uploaded_by, NEW.organization_id, 0, -OLD.byte_size);
-  END IF;
-  RETURN NEW;
-END $$;
-
 CREATE TRIGGER trg_media_assets_10_guard BEFORE INSERT OR UPDATE OR DELETE ON media_assets
   FOR EACH ROW EXECUTE FUNCTION nl_media_assets_before();
-CREATE TRIGGER trg_media_assets_20_ledger AFTER INSERT OR UPDATE ON media_assets
-  FOR EACH ROW EXECUTE FUNCTION nl_media_assets_ledger();
 CREATE TRIGGER trg_media_assets_updated_at BEFORE UPDATE ON media_assets
   FOR EACH ROW EXECUTE FUNCTION nl_set_updated_at();
 CREATE TRIGGER trg_media_assets_no_truncate BEFORE TRUNCATE ON media_assets

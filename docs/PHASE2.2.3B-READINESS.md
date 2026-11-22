@@ -6,13 +6,14 @@
 
 ## 1. Ce que 2.2.3-a fournit
 
-- `media_assets` naît `pending_upload` avec **réservation atomique** du quota (D17). La réception
+- `media_assets` naît `pending_upload` avec **réservation atomique** du quota (D17) : occupation
+  **dérivée** des médias, sans compteur stocké (vue `media_usage_totals`). La réception
   (`→ quarantined`) convertit la réservation en occupation réelle.
 - La réception est réservée au déposant, avant l'échéance de réservation.
 - Expiration (`nl_media_expire_reservations`) et abandon (`upload_aborted`) libèrent l'espace.
 - Les contraintes appliquent la liste blanche MIME et les tailles D15, le texte alternatif et la
   cible des sous-titres.
-- Erreurs stables (`HINT nl:…`) : `quota_exceeded`, `forbidden`, `organization_scope`,
+- Erreurs stables (`HINT nl:…`) : `quota_exceeded`, `quota_below_usage`, `forbidden`, `organization_scope`,
   `invalid_reservation`, `born_pending`, `incoherent_reference`, `immutable`.
 
 ## 2. Périmètre de 2.2.3-b

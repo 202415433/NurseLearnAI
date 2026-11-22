@@ -77,10 +77,11 @@ class Media:
         return mid
 
     def usage(self, scope: str, ident: str | None = None) -> tuple[int, int, int]:
+        """(occupé, réservé, quota) en octets, lus dans la vue dérivée media_usage_totals."""
         col = {"user": "user_id", "organization": "organization_id"}.get(scope)
         where = f"scope_kind = '{scope}'" + (f" AND {col} = '{ident}'" if col else "")
         row = self.db.sql(
-            f"SELECT used_bytes || '|' || reserved_bytes || '|' || quota_bytes FROM media_usage WHERE {where}"
+            f"SELECT used_bytes || '|' || reserved_bytes || '|' || quota_bytes FROM media_usage_totals WHERE {where}"
         )
         if not row:
             return (0, 0, 0)
@@ -304,7 +305,7 @@ def test_clean_only_from_a_traceable_fresh_verdict(scratch):
 # =============================================================================================
 # 7–9. Quotas : réservations concurrentes, dépassements, expiration, libération
 # =============================================================================================
-def test_reservation_and_reception_ledger(m, w, db):
+def test_reservation_and_reception_accounting(m, w, db):
     org = w.org()
     u = w.user("instructor", org=org)
     mid = m.reserve(u, org=org, size=4 * MIB)
@@ -326,22 +327,31 @@ def test_quota_exceeded_without_overshoot(m, w, db):
     assert (used, reserved, quota) == (0, 1000 * MIB, GIB) and used + reserved <= quota
 
 
-def test_concurrent_reservations_never_exceed_the_quota(m, w, db):
+def test_concurrent_reservations_never_exceed_the_quota_then_release(m, w, db):
     org = w.org()
     admin = w.user("admin")
     users = [w.user("instructor", org=org) for _ in range(8)]
     m.reserve(users[0], org=org, size=1)  # crée la ligne de l'établissement
     m.run(admin, f"UPDATE media_usage SET quota_bytes = {3 * MIB + 1} WHERE organization_id = '{org}'")
 
-    def attempt(user: str) -> int:
-        sql = m.ed._tx(user, m.reserve_sql(new_id(), user, org=org, size=MIB), None)
-        return subprocess.run(db.base + ["-d", db.name, "-c", sql], capture_output=True, text=True).returncode
+    def attempt(user: str) -> tuple[int, str]:
+        mid = new_id()
+        sql = m.ed._tx(user, m.reserve_sql(mid, user, org=org, size=MIB), None)
+        return subprocess.run(db.base + ["-d", db.name, "-c", sql], capture_output=True, text=True).returncode, mid
 
     with ThreadPoolExecutor(max_workers=8) as pool:
-        codes = list(pool.map(attempt, users))
-    assert codes.count(0) == 3 and len(codes) == 8
+        results = list(pool.map(attempt, users))
+    accepted = [(u, mid) for u, (code, mid) in zip(users, results, strict=True) if code == 0]
+    assert len(accepted) == 3 and len(results) == 8
     used, reserved, quota = m.usage("organization", org)
     assert used + reserved == 3 * MIB + 1 and used + reserved <= quota
+    # Libération contrôlée (abandon) : la place rendue est de nouveau réservable, une seule fois.
+    user, mid = accepted[0]
+    m.run(user, f"UPDATE media_assets SET deleted_at = now(), deleted_reason = 'upload_aborted' WHERE id = '{mid}'")
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        again = list(pool.map(attempt, users[3:7]))
+    assert [code for code, _ in again].count(0) == 1
+    assert sum(m.usage("organization", org)[:2]) == 3 * MIB + 1
 
 
 def test_reservation_expiry_abort_and_controlled_release(m, w, db):
@@ -353,7 +363,9 @@ def test_reservation_expiry_abort_and_controlled_release(m, w, db):
     )
     time.sleep(1.2)
     assert "expirée" in m.fails(u, m.receive_sql(soon))
-    assert db.sql("SELECT nl_media_expire_reservations()") == "1"
+    assert m.usage("user", u) == (0, MIB, GIB)  # une réservation échue ne compte plus
+    assert db.sql("SELECT nl_media_expire_reservations()") == "1"  # expiration explicite, tracée
+    assert db.sql(f"SELECT deleted_reason FROM media_assets WHERE id = '{soon}'") == "reservation_expired"
     assert m.usage("user", u) == (0, MIB, GIB)
     m.run(u, f"UPDATE media_assets SET deleted_at = now(), deleted_reason = 'upload_aborted' WHERE id = '{later}'")
     assert m.usage("user", u) == (0, 0, GIB)
@@ -366,20 +378,27 @@ def test_reservation_expiry_abort_and_controlled_release(m, w, db):
     )
 
 
-def test_ledger_cannot_be_edited_directly_and_quota_changes_are_audited(m, w, db):
+def test_quota_rows_cannot_be_forged_and_quota_changes_are_audited(m, w, db):
     u, admin, instructor = w.user("instructor"), w.user("admin"), w.user("instructor")
     m.reserve(u, size=MIB)
     row = f"WHERE user_id = '{u}'"
-    for sql in (
-        f"UPDATE media_usage SET used_bytes = 0, reserved_bytes = 0 {row}",
-        f"UPDATE media_usage SET reserved_bytes = reserved_bytes - 1 {row}",
-        f"DELETE FROM media_usage {row}",
-        f"INSERT INTO media_usage (scope_kind, user_id, quota_bytes) VALUES ('user', '{new_id()}', 1)",
-        f"SELECT nl_media_ledger((SELECT id FROM media_usage {row}), -{MIB}, 0)",
-    ):
-        m.fails(admin, sql)
+    # Aucun compteur stocké : l'occupation est dérivée des médias (rien à falsifier).
+    assert (
+        db.sql(
+            "SELECT count(*) FROM information_schema.columns WHERE table_name = 'media_usage' "
+            "AND column_name IN ('used_bytes', 'reserved_bytes')"
+        )
+        == "0"
+    )
+    assert "défaut" in m.fails(
+        admin, f"INSERT INTO media_usage (scope_kind, user_id, quota_bytes) VALUES ('user', '{w.user()}', {100 * GIB})"
+    )
+    assert "interdite" in m.fails(admin, f"DELETE FROM media_usage {row}")
+    m.fails(admin, "TRUNCATE media_usage")
+    assert "immuable" in m.fails(admin, f"UPDATE media_usage SET user_id = '{admin}' {row}")
     assert "administration" in m.fails(instructor, f"UPDATE media_usage SET quota_bytes = {2 * GIB} {row}")
-    assert "ck_media_usage_within_quota" in m.fails(admin, f"UPDATE media_usage SET quota_bytes = 10 {row}")
+    assert "acteur" in m.fails(None, f"UPDATE media_usage SET quota_bytes = {2 * GIB} {row}")
+    assert "occupation actuelle" in m.fails(admin, f"UPDATE media_usage SET quota_bytes = 10 {row}")
     m.run(admin, f"UPDATE media_usage SET quota_bytes = {2 * GIB} {row}")
     audit = db.sql(
         "SELECT actor_user_id || '|' || (metadata->>'old_quota_bytes') || '|' || (metadata->>'new_quota_bytes') "
@@ -387,6 +406,57 @@ def test_ledger_cannot_be_edited_directly_and_quota_changes_are_audited(m, w, db
     )
     assert audit == f"{admin}|{GIB}|{2 * GIB}"
     assert m.usage("user", u) == (0, MIB, 2 * GIB)
+
+
+def test_binary_quota_units(db):
+    assert db.sql("SELECT nl_media_default_quota('user')") == "1073741824"  # 1 Gio
+    assert db.sql("SELECT nl_media_default_quota('organization')") == str(5 * 1073741824)  # 5 Gio
+    assert db.sql("SELECT nl_media_default_quota('platform')") == str(20 * 1073741824)  # 20 Gio
+    assert db.sql(
+        "SELECT nl_media_max_bytes('image') || '|' || nl_media_max_bytes('document') || '|' || "
+        "nl_media_max_bytes('captions') || '|' || nl_media_max_bytes('video')"
+    ) == (f"{5 * MIB}|{20 * MIB}|{MIB}|{200 * MIB}")
+
+
+ADVERSARIAL = """
+BEGIN;
+SELECT set_config('nl.actor_id', '{actor}', true);
+CREATE TEMP TABLE adv_probe (x int);
+CREATE FUNCTION pg_temp.adv_fn() RETURNS trigger LANGUAGE plpgsql AS $adv$
+BEGIN
+  {payload};
+  RETURN NEW;
+END $adv$;
+CREATE TRIGGER adv_trg AFTER INSERT ON adv_probe FOR EACH ROW EXECUTE FUNCTION pg_temp.adv_fn();
+INSERT INTO adv_probe VALUES (1);
+ROLLBACK;
+"""
+
+
+def test_adversarial_nested_triggers_cannot_bypass_quota_or_clean(m, w, db):
+    """Un déclencheur imbriqué (profondeur ≥ 2), créable avec le seul privilège TEMP, n'obtient
+    aucun droit supplémentaire : aucune règle ne dépend de pg_trigger_depth(). Transactions annulées."""
+    u, instructor = w.user("instructor"), w.user("instructor")
+    mid = m.received(u)
+    m.reserve(u, size=MIB)
+    before = (m.usage("user", u), m.state(mid), db.sql("SELECT count(*) FROM media_usage"))
+    payloads = {
+        f"UPDATE media_usage SET quota_bytes = {100 * GIB} WHERE user_id = '{u}'": "administration",
+        f"INSERT INTO media_usage (scope_kind, user_id, quota_bytes) VALUES ('user', '{w.user()}', {100 * GIB})": "défaut",
+        f"DELETE FROM media_usage WHERE user_id = '{u}'": "interdite",
+        f"UPDATE media_assets SET state = 'scanning', scan_attempt = 1 WHERE id = '{mid}'": "media:scan",
+        f"UPDATE media_assets SET purged_at = now() WHERE id = '{mid}'": "Purge réservée",
+        f"UPDATE media_assets SET byte_size = 1 WHERE id = '{mid}'": "immuable",
+        "INSERT INTO role_permissions (role_id, permission_code) SELECT id, 'media:scan' FROM roles WHERE code = 'instructor'": "media_scanner",
+        f"PERFORM nl_media_reserve('user', '{u}', NULL, -{GIB})": None,  # n'écrit rien : ne libère rien
+    }
+    for payload, expected in payloads.items():
+        sql = ADVERSARIAL.format(actor=instructor, payload=payload)
+        if expected is None:
+            db.sql(sql)
+        else:
+            assert expected in db.fails(sql), payload
+    assert (m.usage("user", u), m.state(mid), db.sql("SELECT count(*) FROM media_usage")) == before
 
 
 # =============================================================================================
@@ -624,3 +694,22 @@ def test_downgrade_refused_when_a_role_holds_media_scan(scratch):
     with pytest.raises(Exception) as exc:
         d.file(DOWN)
     assert "rôles media:scan=1" in str(exc.value)
+
+
+def test_existing_installation_loses_unauthorized_media_scan_grants(scratch):
+    """Installation existante où media:scan aurait été créée et donnée à admin hors migration :
+    0007 retire l'attribution, pose la garde, et les données de référence ne la redonnent pas."""
+    d = scratch("existing", upto="0006_independent_program_versions")
+    d.sql("INSERT INTO permissions (code, description) VALUES ('media:scan', 'créée hors migration (test)')")
+    d.sql(
+        "INSERT INTO role_permissions (role_id, permission_code) SELECT id, 'media:scan' FROM roles WHERE code IN ('admin', 'medical_reviewer')"
+    )
+    assert d.sql("SELECT count(*) FROM role_permissions WHERE permission_code = 'media:scan'") == "2"
+    d.file(UP)
+    assert d.sql("SELECT count(*) FROM role_permissions WHERE permission_code = 'media:scan'") == "0"
+    d.file(SCHEMA.parent / "seeds" / "0001_reference_data.sql")
+    d.file(SCHEMA.parent / "seeds" / "0001_reference_data.sql")
+    assert d.sql("SELECT count(*) FROM role_permissions WHERE permission_code = 'media:scan'") == "0"
+    assert "media_scanner" in d.fails(
+        "INSERT INTO role_permissions (role_id, permission_code) SELECT id, 'media:scan' FROM roles WHERE code = 'admin'"
+    )
