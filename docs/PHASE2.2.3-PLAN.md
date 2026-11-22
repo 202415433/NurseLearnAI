@@ -1,6 +1,6 @@
 # Plan — Étape 2.2.3 : médias et documents protégés
 
-> **Statut** : plan proposé, **aucun développement engagé**. Décision antivirus : [ADR-0011](adr/0011-medias-antivirus.md) (proposée).
+> **Statut** : architecture **validée** et décisions **confirmées le 2026-11-21** (§ 7). **Aucun développement engagé** : le code 2.2.3 attend une autorisation distincte. Décision antivirus : [ADR-0011](adr/0011-medias-antivirus.md).
 > Point de départ : `main` = `58279d3` (2.2.2-c intégrée, CI 7/7), migration en tête `0006_independent_versions`.
 
 ## 1. Objectif
@@ -75,10 +75,10 @@ Toute panne, tout doute ou tout état intermédiaire vaut **refus**.
 
 ### 3.2 Validation des formats et des tailles
 
-| Type | MIME autorisé | Contrôle de signature réelle | Normalisation | Taille max (proposée, D15) |
+| Type | MIME autorisé | Contrôle de signature réelle | Normalisation | Taille max (D15) |
 |---|---|---|---|---|
 | Image | `image/jpeg`, `image/png`, `image/webp` | Octets magiques + décodage complet (Pillow), limite de pixels anti-bombe | **Ré-encodage** dans le même format : supprime EXIF, GPS et charges utiles ajoutées (polyglottes) | 5 Mo, 8 000 × 8 000 px |
-| Vidéo | `video/mp4` | Boîte `ftyp` (familles ISO BMFF autorisées) ; analyse de conteneur (D20) | Aucune (pas de transcodage en 2.2.3) | 200 Mo (développement) ; production à fixer |
+| Vidéo | `video/mp4` | Boîte `ftyp` (familles ISO BMFF autorisées) ; analyse structurelle des boîtes (S4, D20) | Aucune (pas de transcodage en 2.2.3) | 200 Mo (développement) ; production à fixer |
 | Sous-titres | `text/vtt` | UTF-8 strict, en-tête `WEBVTT`, aucune balise HTML hors balises WebVTT autorisées | Réécriture texte (balises neutralisées) | 1 Mo |
 | Document | `application/pdf` | En-tête `%PDF-`, analyse de structure : refus si chiffré, JavaScript, `OpenAction`/`Launch`, fichiers joints, formulaires XFA | Aucune (pas de réécriture du PDF) | 20 Mo |
 
@@ -106,6 +106,9 @@ Le type servi est celui **déterminé par l'analyse**, jamais celui annoncé par
   - en développement, une clé applicative unique, comme aujourd'hui.
 - **Chiffrement au repos** : chiffrement du volume ou du disque en production ; chiffrement côté
   serveur RustFS à évaluer (D19).
+- **Privilèges minimaux** (D19) : si RustFS ne permet pas des clés par rôle, le cloisonnement est
+  applicatif (seul le worker écrit dans `nl-media-clean`, seul le service de diffusion y lit) et
+  l'écart est documenté avant la production.
 
 ### 3.4 Analyse antivirus
 
@@ -137,13 +140,13 @@ indisponible ».
   pour le contenu public.
 - Contrôle **sous verrou de ligne** (`FOR UPDATE`) au téléversement : les fichiers `pending`, `clean`
   et `scan_failed` comptent ; les fichiers supprimés libèrent l'espace à la purge.
-- Valeurs proposées (D17) :
+- Valeurs confirmées (D17) :
   - 5 Go et 2 000 fichiers par établissement ;
   - 20 Go pour la plateforme ;
   - 1 Go par utilisateur.
 
   Elles sont surchargeables par l'administrateur de la plateforme seulement.
-- Un dépassement répond **`413 quota_exceeded`** (ou `507`, à trancher), sans écriture dans S3.
+- Un dépassement répond **`413 quota_exceeded`**, sans écriture dans S3. L'espace est **réservé** avant l'écriture S3 (S10).
 
 ### 3.6 Permissions d'accès
 
@@ -172,7 +175,7 @@ la base et par l'API ; hors portée, la réponse est 404.
   - jamais journalisé ;
   - réutilisable pendant sa durée de vie pour les requêtes `Range`.
 - **Diffusion par l'API** (`GET /api/v1/media/t/{jeton}`), en flux depuis `nl-media-clean`, avec
-  prise en charge de `Range` pour la vidéo. **Pas d'URL présignée S3 exposée** (D14), ce qui rend la
+  prise en charge de `Range` pour la vidéo. **Pas d'URL présignée S3 exposée** (D24), ce qui rend la
   révocation immédiate.
 - **En-têtes** :
   - `Content-Type` déterminé à l'analyse ;
@@ -195,7 +198,7 @@ la base et par l'API ; hors portée, la réponse est 404.
 
 ### 3.9 Conservation et suppression
 
-| Cas | Politique proposée (D21) |
+| Cas | Politique (D21, sous réserve des obligations légales de conservation) |
 |---|---|
 | Média rattaché à une version soumise, approuvée, publiée ou archivée | **Conservé, immuable** (historique des éditions) ; jamais supprimé par l'API ; seule une procédure de conservation administrée pourra l'effacer |
 | Brouillon jamais rattaché ou rattaché seulement à des brouillons | Suppression logique (`deleted`), objet purgé après 30 jours de grâce ; audité |
@@ -207,8 +210,15 @@ Les purges sont faites par une **tâche planifiée** du worker, journalisée.
 
 Aucune purge ne touche :
 - un média cité par une version non brouillon ;
+- un média visé par un **signalement de contenu** ouvert ou conservé (`content_issue_reports`) ;
+- un média sous **obligation de conservation** (colonne `legal_hold`, posée par un administrateur ; enquête, litige, exigence réglementaire de la juridiction) ;
 - une décision éditoriale ;
 - un historique d'apprentissage.
+
+Les durées ci-dessus sont des **minimums techniques** : elles s'effacent devant toute obligation
+légale de conservation plus longue, à confirmer par juridiction avec la politique de confidentialité.
+La purge vérifie ces conditions **sous verrou**, dans la même transaction, et s'abstient en cas de
+doute.
 
 ### 3.10 Audit
 
@@ -229,13 +239,15 @@ version des signatures, durée, résultat.
 
 ### 3.11 Sauvegardes
 
-| Donnée | Politique proposée (D22) |
+| Donnée | Politique (D22) |
 |---|---|
 | PostgreSQL | Inchangé (architecture) : quotidienne + WAL, restauration testée mensuellement |
-| `nl-media-clean` | Copie quotidienne vers un stockage de sauvegarde distinct avec `rclone` (libre, gratuit), rétention 30 jours ; versionnage RustFS si disponible |
+| `nl-media-clean` | Copie quotidienne **chiffrée** (`rclone crypt`, clé hors dépôt) vers un stockage de sauvegarde distinct, rétention 30 jours ; versionnage RustFS si disponible |
 | `nl-media-quarantine` | **Exclu** des sauvegardes (fichiers non sûrs) |
 | Cohérence | Tâche de rapprochement hebdomadaire : chaque `media_assets.clean` a son objet et son SHA-256 ; chaque objet a sa ligne. Les écarts sont signalés, jamais supprimés automatiquement |
-| Restauration | Base d'abord, puis objets ; tout média dont l'objet manque passe en `scan_failed` (non servi) |
+| Cohérence base ↔ objets | La sauvegarde des objets suit le **point de sauvegarde PostgreSQL** : la liste des objets à copier est extraite de `media_assets` (état `clean`, clé, SHA-256) au moment de la sauvegarde de la base, et chaque copie est vérifiée par SHA-256. Tout objet référencé et absent est signalé |
+| Restauration | Base d'abord, puis objets ; tout média dont l'objet manque ou dont le SHA-256 diffère passe en `scan_failed` (non servi) |
+| Test de restauration | **Mensuel**, et à chaque évolution du schéma média : restauration dans un environnement jetable, rapprochement complet, échantillon de diffusions ; résultat consigné |
 
 ### 3.12 Tests de sécurité
 
@@ -277,7 +289,7 @@ Aucune modification de 0001 à 0006, et `learning_resources` reste intacte.
 
 | Table | Rôle |
 |---|---|
-| `media_assets` | Identifiant ; `organization_id` (nul = public) ; `uploaded_by` ; `kind` ; `mime_type` ; `byte_size` ; `sha256` ; clés de stockage (quarantaine, sains) ; `scan_status` ; `access_epoch` ; `status` (`active` / `revoked` / `deleted`) ; `display_name` assaini ; `license` ; `attribution` ; `alt_text_i18n` ; `captions_for` (sous-titres → vidéo) ; horodatages |
+| `media_assets` | Identifiant ; `organization_id` (nul = public) ; `legal_hold` ; `uploaded_by` ; `kind` ; `mime_type` ; `byte_size` ; `sha256` ; clés de stockage (quarantaine, sains) ; `scan_status` ; `access_epoch` ; `status` (`active` / `revoked` / `deleted`) ; `display_name` assaini ; `license` ; `attribution` ; `alt_text_i18n` ; `captions_for` (sous-titres → vidéo) ; horodatages |
 | `media_scan_events` | Ajout seul : média, résultat, signature détectée, version des signatures, durée, tentative |
 | `lesson_version_media` | (version de leçon, média) : rattachement vérifié par déclencheur (portée, état du brouillon, immuabilité hors brouillon) |
 | `media_usage` | Compteurs par établissement ou plateforme, quotas surchargeables |
@@ -304,39 +316,146 @@ fonction de contrôle des médias, appelée par l'API et par un déclencheur de 
 | `GET` | `/api/v1/media/t/{jeton}` | Diffusion en flux (`Range`) |
 | `GET` | `/api/v1/admin/media/usage` | Quotas et consommation (admin) |
 
-## 6. Découpage proposé
+## 6. Renforcement de sécurité (exigences contraignantes)
 
-| Sous-étape | Contenu | Estimation |
+| # | Exigence | Mise en œuvre prévue |
 |---|---|---|
-| 2.2.3-a | Migration 0007, tests de base (contraintes, déclencheurs, retour arrière) | 1 j |
-| 2.2.3-b | Service de stockage (RustFS, deux compartiments), validation des formats, quotas, téléversement | 1,5 j |
-| 2.2.3-c | `clamd` + worker Redis Streams, états, nouvelle analyse, mode panne, Compose | 1,5 j |
-| 2.2.3-d | Rattachements éditoriaux, contrôles de soumission et de publication, distribution par jetons, révocation | 1,5 j |
-| 2.2.3-e | Tests de sécurité, conservation et purge, sauvegarde `rclone` documentée, validation Windows | 1 à 1,5 j |
-| **Total** | | **6,5 à 7 jours** |
+| S1 | **Révocation immédiate par contrôle serveur** | Aucun lien autonome : chaque requête de diffusion relit en base l'état du média (`scan_status`, `status`, `access_epoch`) et en Redis le jeton ; une révocation (époque + 1, `revoked`, `infected`) prend effet à la requête suivante, sans attendre l'expiration |
+| S2 | **Autorisation revérifiée pour chaque requête HTTP `Range`** | Chaque requête partielle est traitée comme une requête complète : session, jeton, utilisateur, état `clean`, époque, rattachement à une édition accessible ; aucune décision mise en cache entre deux plages |
+| S3 | **Refus de diffusion si le média n'est pas `clean`** | Garde unique côté API, plus vue SQL de diffusion ne renvoyant que des médias `clean`, `active`, à époque courante ; test pour chaque état |
+| S4 | **Analyse structurelle des PDF et MP4** | PDF : analyse de l'arbre d'objets (refus de JavaScript, `OpenAction`/`Launch`, `EmbeddedFile`, XFA, chiffrement, flux corrompus) ; MP4 : parcours des boîtes ISO BMFF (`ftyp` autorisé, tailles cohérentes, profondeur et nombre de boîtes bornés, aucune donnée hors boîtes) |
+| S5 | **Traitements isolés et bornés** | Analyse et normalisation dans le **worker** (conteneur dédié, sans privilège, système de fichiers en lecture seule hors répertoire temporaire, réseau limité à RustFS, Redis, PostgreSQL et `clamd`) ; limites Compose `cpus` / `mem_limit` ; limites par tâche (`RLIMIT_AS`, `RLIMIT_CPU`, délai d'expiration) ; `clamd` avec `StreamMaxLength`, `MaxScanTime`, `MaxFileSize` |
+| S6 | **PostgreSQL comme source de vérité** | L'état d'un média n'existe qu'en base ; Redis ne porte que des messages et des jetons reconstructibles ; aucune décision d'accès n'est prise sur la seule foi de Redis |
+| S7 | **Tâches Redis idempotentes** | Message = (média, tentative, empreinte attendue) ; transition conditionnelle en base (`UPDATE … WHERE scan_status = 'pending' AND sha256 = :attendu`) ; copie S3 vers une clé déterministe ; un message rejoué ne produit ni doublon ni changement d'état |
+| S8 | **Reprise après panne du worker** | Groupe de consommateurs Redis Streams : messages non acquittés réclamés (`XAUTOCLAIM`) après délai ; réconciliateur périodique qui réenfile tout média `pending`/`rescan_pending` plus ancien qu'un seuil ; nombre de tentatives borné, puis `scan_failed` |
+| S9 | **Refus par défaut en cas de panne de ClamAV** | `clamd` injoignable, délai dépassé, réponse inattendue ou signatures de plus de 48 h ⇒ aucun passage à `clean` ; le média reste non diffusable ; santé `media_scanning: degraded` |
+| S10 | **Quotas protégés contre les téléversements simultanés** | **Réservation** de l'espace sous verrou de ligne (`media_usage … FOR UPDATE`) **avant** l'écriture S3, libérée si le téléversement échoue ; contrainte `CHECK (used_bytes <= quota_bytes)` en base comme dernier rempart |
+| S11 | **Sauvegardes cohérentes avec PostgreSQL** | Voir § 3.11 : liste des objets dérivée de la base au point de sauvegarde, vérification SHA-256, rapprochement |
+| S12 | **Tests de restauration** | Mensuels et à chaque évolution du schéma média ; restauration jetable, rapprochement, diffusion échantillonnée (§ 3.11) |
+| S13 | **Purge interdite en présence de signalements ou d'obligations de conservation** | Voir § 3.9 : `content_issue_reports` et `legal_hold` bloquent toute purge, vérifiés sous verrou ; la clé étrangère historique en CASCADE de `content_issue_reports` n'est jamais exercée par une purge de média |
+| S14 | **Aucun contournement manuel du statut `clean`** | `clean` ne peut être posé que par l'identité de service du worker avec un événement `media_scan_events` « OK » de la même tentative ; déclencheur 0007 refusant tout autre passage ; aucune route, variable d'environnement ni rôle (admin compris) pour forcer l'état |
 
-Hors périmètre :
-- lecteur de leçons et progression (2.2.4) ;
-- transcodage vidéo, vignettes, CDN public ;
-- MFA (D9).
+## 7. Décisions confirmées (2026-11-21)
 
-## 7. Décisions à confirmer
+Les identifiants D1 à D14 existent déjà, D14 désignant la séparation des rôles PostgreSQL (lot 2.5).
+Les décisions médias utilisent donc **D7** (déjà réservée aux médias par le plan 2.2) et **D15 à
+D24**, tous libres avant ce plan.
 
-| # | Décision | Proposition |
+| # | Décision | Contenu confirmé |
 |---|---|---|
-| D7 | Antivirus | ClamAV `clamd` en Docker, **asynchrone** (Redis Streams + worker), fermeture par défaut — [ADR-0011](adr/0011-medias-antivirus.md) |
-| D14 | Mode de diffusion | Flux par l'API avec jetons révocables de 5 min ; pas d'URL présignée S3 exposée |
-| D15 | Tailles maximales | Image 5 Mo, PDF 20 Mo, VTT 1 Mo, vidéo 200 Mo en développement (production à fixer) |
-| D16 | Débit | 30 téléversements par heure et par utilisateur, 300 par heure et par établissement |
-| D17 | Quotas | 5 Go et 2 000 fichiers par établissement ; 20 Go pour la plateforme ; 1 Go par utilisateur |
-| D18 | Accès aux médias des programmes publics gratuits | Session authentifiée exigée, plutôt qu'un accès anonyme |
-| D19 | Comptes de stockage, chiffrement | Clés distinctes par rôle si RustFS le permet ; chiffrement du volume en production |
-| D20 | Bibliothèques | Pillow (images, licence HPND) ; pypdf (BSD) ou pikepdf (MPL-2.0) pour l'analyse PDF ; client `clamd` INSTREAM écrit dans le projet (protocole simple, pas de dépendance non maintenue) ; client S3 : `aiobotocore` / `boto3` (Apache 2.0) ; vérification MP4 sans ffmpeg (boîtes ISO BMFF) ou `ffprobe` (à trancher) |
-| D21 | Conservation | Grâce de 30 jours (suppression), 30 jours (infectés), 7 jours (orphelins) |
-| D22 | Sauvegarde des médias | `rclone` quotidien vers un stockage distinct, 30 jours ; quarantaine exclue |
-| D23 | ClamAV en CI | Job d'intégration dédié avec `clamd` réel (EICAR), cache des signatures ; tests unitaires avec analyseur simulé |
+| D7 | Antivirus | ClamAV `clamd` en Docker + analyse **asynchrone** par un **worker** alimenté par une file **Redis** ; refus par défaut ([ADR-0011](adr/0011-medias-antivirus.md)) |
+| D15 | Tailles maximales | Image 5 Mo ; PDF 20 Mo ; VTT 1 Mo ; MP4 200 Mo en développement (valeur de production à fixer avant mise en ligne) |
+| D16 | Débit de téléversement | 30 par heure et par utilisateur ; 300 par heure et par établissement |
+| D17 | Quotas | 1 Go par utilisateur ; 5 Go par établissement ; 20 Go pour la plateforme |
+| D18 | Consultation des médias | **Authentification obligatoire**, y compris pour les programmes publics gratuits |
+| D19 | Stockage | Compartiments **privés**, **privilèges minimaux** (une clé par rôle : dépôt, analyse, diffusion, si RustFS le permet ; sinon cloisonnement applicatif documenté), chiffrement au repos en production |
+| D20 | Bibliothèques | Uniquement des bibliothèques **maintenues**, à licence compatible, **auditées** (`pip-audit` en CI) ; choix précis arrêté et justifié en 2.2.3-b (Pillow ; pypdf ou pikepdf ; client S3 ; client `clamd` interne) |
+| D21 | Conservation | Durées techniques du § 3.9, **sous réserve des obligations légales** de conservation par juridiction |
+| D22 | Sauvegardes | **Chiffrées**, cohérentes avec les références PostgreSQL, **restauration testée** (§ 3.11) |
+| D23 | Antivirus en CI | **ClamAV réel** dans un job d'intégration avec le fichier de test **EICAR** ; analyseur simulé pour les tests unitaires |
+| D24 | Diffusion | Par l'**API**, avec **contrôle d'autorisation à chaque requête** (y compris `Range`) et jetons révocables de 5 min ; aucune URL présignée S3 exposée |
 
-## 8. Risques
+## 8. Découpage du développement (branche `phase-2.2.3-secure-media`)
+
+Chaque sous-étape se termine par : Ruff, mypy, tests de base et d'API sur PostgreSQL et Redis réels,
+non-régression complète, aucun push sans autorisation.
+
+### 2.2.3-a — Migration 0007, modèles, invariants et quotas
+
+- **Contenu** : tables `media_assets`, `media_scan_events` (ajout seul), `lesson_version_media`,
+  `media_usage` ; colonnes `legal_hold`, `access_epoch` ; déclencheurs : portée et isolation des
+  rattachements, immuabilité hors brouillon, passage à `clean` réservé au worker (S14), quotas
+  (S10) ; extension des contrôles de soumission et de publication via une fonction de 0007 (aucune
+  réécriture de 0001 à 0006).
+- **Critères d'acceptation** : montée, descente et remontée à l'identique ; aucune migration
+  historique modifiée ; tous les invariants refusés par la base même sans l'API.
+- **Tests obligatoires** :
+  - aller-retour de 0007 avec signature de schéma identique ;
+  - rattachement inter-établissements refusé ;
+  - version soumise, approuvée ou publiée avec média non `clean` refusée ;
+  - passage à `clean` sans événement « OK » ou hors identité du worker refusé ;
+  - quota dépassé refusé par la contrainte ;
+  - `legal_hold` et signalement bloquant la suppression ;
+  - non-régression de toutes les suites de base.
+
+### 2.2.3-b — Téléversement sécurisé et stockage privé
+
+- **Contenu** : service de stockage RustFS (deux compartiments privés, clés aléatoires, privilèges
+  minimaux D19) ; `POST /api/v1/editorial/media` en flux ; liste blanche et signature réelle ;
+  ré-encodage des images ; analyse structurelle PDF et MP4 (S4) ; limites D15 ; débit D16 ;
+  réservation de quota D17 (S10) ; audit.
+- **Critères d'acceptation** : aucun fichier hors liste ou incohérent n'atteint la quarantaine ;
+  aucun fichier n'est jamais lisible depuis l'API à ce stade ; quotas exacts sous concurrence.
+- **Tests obligatoires** :
+  - type hors liste, extension ou MIME trompeur, SVG ou HTML déguisé, polyglotte, bombe d'image ;
+  - PDF actif, chiffré ou avec fichier joint ; MP4 malformé ou à boîtes incohérentes ;
+  - VTT avec HTML ;
+  - taille limite et taille plus un octet ;
+  - débit dépassé ;
+  - quotas sous téléversements simultanés ;
+  - isolation 404 ;
+  - session non sensible refusée ;
+  - audit sans nom de fichier ni contenu.
+
+### 2.2.3-c — ClamAV, worker, quarantaine et reprise après panne
+
+- **Contenu** : service `clamav` (profil Compose `media`, volume de signatures persistant, limites
+  CPU et mémoire) ; worker `media-scan` (Redis Streams, groupe de consommateurs, idempotence S7,
+  reprise S8, isolation S5) ; refus par défaut S9 ; nouvelle analyse hebdomadaire ; réconciliateur ;
+  état de santé.
+- **Critères d'acceptation** : seul un verdict « OK » avec signatures fraîches produit `clean` ;
+  aucune panne ne rend un fichier diffusable ; aucun message rejoué ne change un état déjà établi.
+- **Tests obligatoires** :
+  - EICAR → `infected` (ClamAV réel, D23) ;
+  - `clamd` arrêté → `pending` puis `scan_failed` ;
+  - délai dépassé ;
+  - signatures périmées ;
+  - message rejoué ;
+  - worker tué en cours d'analyse puis repris ;
+  - perte de Redis puis réconciliation ;
+  - nouvelle analyse détectant une menace → révocation ;
+  - limites de ressources respectées ;
+  - job CI d'intégration ClamAV.
+
+### 2.2.3-d — Diffusion autorisée, révocation et conservation
+
+- **Contenu** : rattachements `PUT /lesson-versions/{id}/media` (`If-Match`) ; contrôles de
+  soumission, approbation et publication ; `POST /api/v1/media/{id}/access` et
+  `GET /api/v1/media/t/{jeton}` en flux avec `Range` (D24, S1 à S3) ; authentification obligatoire
+  (D18) ; révocation ; suppression logique ; purge planifiée (§ 3.9, S13) ; `legal_hold`.
+- **Critères d'acceptation** : aucun octet d'un média non `clean`, révoqué ou supprimé ne sort de
+  l'API ; chaque requête, partielle ou complète, est autorisée à neuf ; aucune purge ne viole
+  S13.
+- **Tests obligatoires** :
+  - diffusion refusée pour chaque état non `clean`, et pour l'auteur ;
+  - jeton expiré, d'un autre utilisateur, révoqué ;
+  - révocation entre deux requêtes `Range` ;
+  - accès anonyme refusé ;
+  - média non cité par une édition exposée → 404 ;
+  - hors établissement → 404 ;
+  - en-têtes de sécurité ;
+  - publication bloquée par un média non `clean` ;
+  - purge bloquée par signalement et par `legal_hold` ;
+  - audit sans jeton.
+
+### 2.2.3-e — Tests d'intégration, sécurité, restauration et validation Windows
+
+- **Contenu** : scénario de bout en bout (dépôt → analyse → rattachement → relecture → publication
+  non médicale → diffusion → révocation) ; campagne de tests de sécurité ; sauvegarde chiffrée et
+  restauration (D22, S11, S12) ; documentation `VALIDATION-PHASE2.2.3.md` ; script
+  `validate-phase2.2.3.ps1` (enchaîne 2.2.2-c et antérieures).
+- **Critères d'acceptation** : les 10 critères du § 10 ; restauration réussie et rapprochée ;
+  CI 7/7 (plus le job ClamAV) ; validation Windows sans échec ; aucune publication médicale.
+- **Tests obligatoires** :
+  - bout en bout sur Docker Compose réel ;
+  - restauration dans un environnement jetable avec rapprochement et diffusion échantillonnée ;
+  - non-régression complète (pytest, Vitest, Playwright + axe) ;
+  - contrôles Windows en lecture seule (migration en tête `0007`, médias non `clean` jamais servis,
+    pilote PAB en brouillon).
+
+Estimation globale : 6,5 à 7 jours.
+
+## 9. Risques
 
 | Risque | Niveau | Mesure |
 |---|---|---|
@@ -345,13 +464,13 @@ Hors périmètre :
 | Téléchargement et limitation des mises à jour de signatures (`freshclam`) | Moyen | Cadence par défaut, volume de signatures persistant ; miroir privé (`cvdupdate`) en production |
 | Faux positifs ClamAV | Faible | `infected` réexaminable par un relecteur plateforme (nouvelle analyse) ; jamais de contournement manuel vers `clean` |
 | Analyse incomplète des PDF par ClamAV | Moyen | Analyse de structure en plus (JavaScript, fichiers joints, chiffrement refusés) |
-| Performance de la diffusion par l'API (vidéo) | Moyen | Flux et `Range` ; mesure ; option de redirection présignée de 60 s après contrôle, si nécessaire (D14) |
+| Performance de la diffusion par l'API (vidéo) | Moyen | Flux et `Range` ; mesure ; toute redirection présignée exigerait une nouvelle décision, car elle affaiblirait la révocation immédiate (D24) |
 | Maturité de RustFS (versionnage, politiques par clé) | Moyen | Vérification en début de 2.2.3-b ; repli sur les contrôles applicatifs |
 | Données personnelles dans les médias (visages, patients) | Élevé | EXIF supprimé ; **aucune donnée ni photo de patient réel** (règle du projet) ; contrôle en relecture médicale |
 | Croissance du stockage | Moyen | Quotas, purge des orphelins, rapprochement |
 | Redis perdu (file, jetons) | Faible | La base reste la source de vérité ; un réconciliateur relance les `pending` ; les jetons se redemandent |
 
-## 9. Critères d'acceptation
+## 10. Critères d'acceptation
 
 1. Aucun octet d'un média `pending`, `infected`, `scan_failed`, révoqué ou supprimé ne sort de l'API,
    pour aucun rôle. Un test couvre chaque état.

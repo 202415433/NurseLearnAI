@@ -1,6 +1,6 @@
 # ADR-0011 — Analyse antivirus des médias (D7)
 
-**Statut** : **proposée**, pas encore approuvée. Elle concerne l'étape 2.2.3 ([plan](../PHASE2.2.3-PLAN.md)).
+**Statut** : décision **approuvée** le 2026-11-21 (D7 confirmée) ; mise en œuvre : étape 2.2.3, sous-étape 2.2.3-c, **non commencée** ([plan](../PHASE2.2.3-PLAN.md)).
 **Contexte de décision** : D7 de [`PHASE2.2-PLAN.md`](../PHASE2.2-PLAN.md) : « ClamAV en conteneur local (gratuit) ; média non publiable tant qu'il n'est pas analysé ».
 
 ## Contexte
@@ -44,7 +44,7 @@ mises à jour par `freshclam`). Ce qui change, c'est le **mode d'intégration**.
 - Les miroirs publics limitent le débit : en production, un miroir privé (`cvdupdate`, gratuit) est
   recommandé.
 
-## Décision proposée
+## Décision
 
 1. **Moteur.** ClamAV `clamd`, image officielle en conteneur, accessible seulement sur le réseau
    Compose interne, sans port publié. Les signatures sont dans un volume persistant dédié ; un volume
@@ -92,9 +92,14 @@ mises à jour par `freshclam`). Ce qui change, c'est le **mode d'intégration**.
 10. **Développement local et CI.**
     - **Développement :** le service `clamav` est démarré avec un profil Compose `media`. Sans lui,
       les médias restent `pending`, ce qui est conforme à la fermeture par défaut.
-    - **CI :** les tests unitaires utilisent un analyseur simulé (verdicts `OK`, `FOUND`, erreur,
-      délai). Un job d'intégration démarre `clamd` réel et vérifie le fichier de test **EICAR**
-      (chaîne standard, inoffensive), avec un cache des signatures.
+    - **CI (D23, confirmée) :** les tests unitaires utilisent un analyseur simulé (verdicts `OK`,
+      `FOUND`, erreur, délai). Un job d'intégration démarre `clamd` **réel** et vérifie le fichier de
+      test **EICAR** (chaîne standard, inoffensive), avec un cache des signatures.
+11. **Isolation des traitements.** Le worker et `clamd` s'exécutent sans privilège, avec des limites
+    de CPU, de mémoire et de durée (limites Compose, `RLIMIT_*`, délais d'expiration,
+    `StreamMaxLength`, `MaxScanTime`, `MaxFileSize`).
+12. **Diffusion (D24).** L'antivirus n'autorise rien à lui seul : chaque requête de diffusion, y
+    compris chaque requête `Range`, revérifie l'état `clean` et l'autorisation côté serveur.
 
 ## Conséquences
 
@@ -115,9 +120,12 @@ mises à jour par `freshclam`). Ce qui change, c'est le **mode d'intégration**.
 - Aucun coût de licence.
 - Aucune donnée envoyée à un service externe : l'analyse reste locale.
 
-## Points restant à confirmer
+## Paramètres d'exploitation (ajustables sans nouvelle décision)
+
+Valeurs initiales retenues ; leur ajustement est documenté, jamais dans le sens d'un assouplissement
+de la fermeture par défaut.
 
 - Seuil de fraîcheur des signatures (48 h proposé) et cadence de nouvelle analyse (hebdomadaire).
 - Nombre de tentatives et délais (5 tentatives, de 30 s à 30 min).
 - Ressources allouées à `clamd` en production, et miroir `cvdupdate`.
-- Job CI avec `clamd` réel, compte tenu du temps de téléchargement des signatures (D23).
+- Durée du job CI avec `clamd` réel, compte tenu du téléchargement des signatures (cache).
