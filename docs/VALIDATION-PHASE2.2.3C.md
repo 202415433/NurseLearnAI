@@ -276,14 +276,14 @@ Les 5 échecs, et leur correction :
   - journaux sans secret.
 
 **Remarques d'exploitation (sans effet sur la sécurité)** :
-1. freshclam ne peut pas prévenir clamd : dans l'image officielle, le socket est `/tmp/clamd.sock` et non `/run/clamav`. clamd recharge donc ses signatures à sa vérification périodique (`SelfCheck`, 10 min). Entre-temps, des signatures périmées donnent un refus sûr (`signatures_stale`), jamais `clean`. Correctif proposé : partager `/tmp` entre les deux conteneurs ClamAV, à valider.
+1. freshclam ne peut pas prévenir clamd : dans l'image officielle, le socket est `/tmp/clamd.sock` et non `/run/clamav`. clamd recharge donc ses signatures à sa vérification périodique (`SelfCheck`, 10 min). Entre-temps, des signatures périmées donnent un refus sûr (`signatures_stale`), jamais `clean`. Correctif limité proposé (non implémenté, sans enjeu de sécurité) : [PROPOSAL-D14-POSTGRES-ROLES.md](PROPOSAL-D14-POSTGRES-ROLES.md) § 7.
 2. La mise à jour explicite lancée par le script échoue sur le verrou du journal de freshclam, déjà tenu par le démon. Elle est inutile quand le démon fonctionne.
 
 ## 8. Risques résiduels
 
 | Risque | Niveau | Traitement |
 |---|---|---|
-| **L'API se connecte en superutilisateur PostgreSQL** (développement) : elle peut techniquement contourner toutes les gardes (`SET SESSION AUTHORIZATION`, désactivation des déclencheurs) | **Élevé avant la production** | Prérequis de 2.2.3-d et de la production : compte applicatif ordinaire, propriétaire distinct des objets. Lot dédié recommandé |
+| **L'API se connecte en superutilisateur PostgreSQL** (développement) : elle peut techniquement contourner toutes les gardes (`SET SESSION AUTHORIZATION`, désactivation des déclencheurs) | **Élevé ; BLOQUANT avant 2.2.3-d** | **D14** : rôles `nl_owner`, `nl_migrator`, `nl_api`, `nl_media_scanner`. Voir [PROPOSAL-D14-POSTGRES-ROLES.md](PROPOSAL-D14-POSTGRES-ROLES.md) |
 | Une seule clé S3 pour l'API et le worker (D19, cloisonnement applicatif) | Moyen | Clés RustFS distinctes : API en écriture sur la quarantaine seulement, worker en lecture de quarantaine et écriture du compartiment sain |
 | Dépendance à la fraîcheur des signatures (miroirs ClamAV, limitation de débit) ; rechargement de clamd différé de 10 min au plus (notification par socket inopérante) | Moyen | Échec sûr (`signatures_stale`) ; alerte d'exploitation et partage du socket à prévoir |
 | ClamAV ne détecte pas tout (PDF et MP4 non réécrits) | Moyen | Défense en profondeur 2.2.3-b + nouvelle analyse périodique (à planifier avec 2.2.3-d) |

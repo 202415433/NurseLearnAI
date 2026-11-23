@@ -15,7 +15,11 @@
 
 ## 2. Prérequis bloquants avant toute diffusion
 
-1. **Compte PostgreSQL applicatif non superutilisateur pour l'API**, avec des objets possédés par un rôle distinct. Sans cela, les gardes de base restent contournables par l'API.
+1. **D14 — CONDITION BLOQUANTE : l'API ne doit plus se connecter à PostgreSQL en superutilisateur ni en propriétaire privilégié du schéma.** Sans cela, les gardes de base restent contournables par l'API. Proposition détaillée : [PROPOSAL-D14-POSTGRES-ROLES.md](PROPOSAL-D14-POSTGRES-ROLES.md). Elle prévoit :
+   - les rôles `nl_owner`, `nl_migrator`, `nl_api` et `nl_media_scanner` ;
+   - des permissions minimales ;
+   - la protection des fonctions et des déclencheurs ;
+   - des tests de refus des opérations privilégiées.
 2. **Clés S3 séparées** :
    - API : écriture en quarantaine seulement ;
    - worker : lecture de la quarantaine et écriture du compartiment sain ;
