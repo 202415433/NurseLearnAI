@@ -255,11 +255,13 @@ def test_api_cannot_modify_a_frozen_edition(db, w, api):
     assert "transitions éditoriales" in refused(api, forged, reviewer)
 
 
-def test_api_cannot_take_ownership_or_escalate(api):
+def test_api_cannot_take_ownership_or_escalate(db, api):
     assert "owner" in refused(api, "ALTER TABLE users OWNER TO nl_api")  # 9
     assert "owner" in refused(api, "ALTER SCHEMA public OWNER TO nl_api")
-    for role in ("nl_owner", "nl_media_scanner", "postgres"):  # 10
-        assert "permission denied" in refused(api, f"SET ROLE {role}")
+    # Superutilisateur d'administration RÉEL de ce cluster (postgres en CI, nurselearn sous Docker).
+    admin = db.sql("SELECT current_user")
+    for role in ("nl_owner", "nl_media_scanner", admin):  # 10
+        assert "permission denied" in refused(api, f"SET ROLE {role}"), role
     assert "permission denied" in refused(api, "SET SESSION AUTHORIZATION nl_owner")
     assert "permission denied" in refused(api, "CREATE TABLE intrus (a int)")  # 11
     assert "permission denied" in refused(api, "CREATE TEMP TABLE intrus (a int)")

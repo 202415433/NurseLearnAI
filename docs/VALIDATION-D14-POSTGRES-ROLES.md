@@ -123,7 +123,26 @@ S'y ajoutent l'inventaire des rôles, des propriétaires, des 5 fonctions `SECUR
 - L'API s'exécute en `nl_api` dans le job API.
 - Le job Docker Compose vérifie : `migrate` terminé avec le code 0, `verify_head`, sessions `nl_api`, déclencheur non désactivable depuis le conteneur API, aucun identifiant d'administration dans l'API.
 
-**Windows** : `scripts/validate-d14-postgres-roles.ps1`. **Résultats : à compléter après exécution.**
+**Windows** : `scripts/validate-d14-postgres-roles.ps1`.
+
+**Premier passage** (22/11/2026, commit `11215d2`) : **21/23**. Les deux échecs relèvent du test et du script ; aucune protection n'est en cause.
+
+Résultats sur une installation **existante** :
+- `0008` → `0009`, avec `nurselearn` superutilisateur et propriétaire de tout avant la migration.
+- Sauvegarde de 461 950 octets (76 tables de données).
+- Conteneur `migrate` terminé avec le code 0 ; `verify_head` réussi avec les contrôles D14.
+- Rôles sans privilège ; aucune appartenance ; tout le schéma appartient à `nl_owner` ; 5 fonctions `SECURITY DEFINER` verrouillées.
+- API en `nl_api` sans identifiant d'administration ; sessions en base : `nl_api` et `nl_media_scanner` seulement.
+- **Sonde dans le conteneur API : 20/20 refusées.**
+- **Aucune donnée perdue** (compteurs avant 31/31/1/1/8/0/0/0/0/191, après 34/34/1/1/8/0/0/0/0/210 : nouvelles données des scripts).
+- **ClamAV réel et EICAR : 11 + 62 tests réussis.**
+- Pytest complet sous `nl_api` : 344 réussis, 1 échec.
+
+Les deux échecs, et leur correction :
+1. **Échec pytest** : le test visait le rôle `postgres`, qui n'existe pas sous Docker (le superutilisateur y est `nurselearn`). Le test vise désormais le superutilisateur réel du cluster.
+2. **Contrôle des privilèges** : la requête par nom de table était évaluée sur des tables du catalogue système (`public.pg_statistic` inexistante). Elle passe désormais par OID, sans résolution de nom.
+
+**Second passage** : à compléter.
 
 ## 6. Processus de migration d'une installation existante et reprise
 
