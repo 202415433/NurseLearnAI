@@ -2,9 +2,10 @@
 
 Usage : python -m app.seed
 
-Si MEDIA_SCANNER_DB_PASSWORD est défini (Docker Compose, profil `media`), ouvre aussi la connexion
-de service PostgreSQL `nl_media_scanner` (migration 0008) avec ce mot de passe. Le secret vient de
-l'environnement (.env, non versionné) et n'est jamais journalisé.
+Si API_DB_PASSWORD ou MEDIA_SCANNER_DB_PASSWORD sont définis (conteneur `migrate` de Docker Compose),
+ouvre aussi les connexions PostgreSQL `nl_api` (D14, migration 0009) et `nl_media_scanner`
+(migration 0008) avec ces mots de passe. Exige la connexion d'administration. Les secrets viennent de
+l'environnement (.env, non versionné) et ne sont jamais journalisés.
 """
 
 from __future__ import annotations
@@ -37,15 +38,22 @@ def main() -> int:
             with conn.cursor() as cur:
                 cur.execute(f.read_text(encoding="utf-8"))  # sans paramètres : multi-instructions, % non interprétés
             log.info("donnees_appliquees", extra={"file": f.name})
-        scanner_password = os.environ.get("MEDIA_SCANNER_DB_PASSWORD", "")
-        if scanner_password:
-            if len(scanner_password) < 16:
-                log.error("mot_de_passe_service_trop_court")
+        # Connexions applicatives (D14, migrations 0008 et 0009) : mots de passe posés par
+        # l'administration, depuis l'environnement du seul conteneur de migration.
+        for env_name, role in (("API_DB_PASSWORD", "nl_api"), ("MEDIA_SCANNER_DB_PASSWORD", "nl_media_scanner")):
+            password = os.environ.get(env_name, "")
+            if not password:
+                continue
+            if len(password) < 16:
+                log.error("mot_de_passe_connexion_trop_court", extra={"role": role})
                 return 1
             with conn.cursor() as cur:
-                stmt = sql.SQL("ALTER ROLE nl_media_scanner LOGIN PASSWORD {}").format(sql.Literal(scanner_password))
+                cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,))
+                if cur.fetchone() is None:
+                    continue  # rôle pas encore créé (base antérieure à sa migration)
+                stmt = sql.SQL("ALTER ROLE {} LOGIN PASSWORD {}").format(sql.Identifier(role), sql.Literal(password))
                 cur.execute(stmt)
-            log.info("connexion_service_analyse_ouverte")
+            log.info("connexion_applicative_ouverte", extra={"role": role})
         conn.commit()
     return 0
 

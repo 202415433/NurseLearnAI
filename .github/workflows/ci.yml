@@ -160,12 +160,19 @@ jobs:
           mypy
       - run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - run: psql -h localhost -U postgres -c "CREATE DATABASE nl_api"
-      - name: Migrations et données de référence
+      - name: Migrations et données de référence (connexion d'administration)
+        env:
+          API_DB_PASSWORD: ci-api-connection-pw
         run: alembic upgrade head && python -m app.seed && python -m app.seed
-      - name: Tests de l'API (intégration PostgreSQL + unitaires)
+      - name: Tests de l'API — application connectée en nl_api (D14), fixtures en administration
         # Avertissement httpx de Starlette traité comme une erreur : il ne doit pas réapparaître.
+        env:
+          DATABASE_URL: postgresql+asyncpg://nl_api:ci-api-connection-pw@localhost:5432/nl_api
+          NL_TEST_ADMIN_DATABASE_URL: postgresql+psycopg://postgres:ci@localhost:5432/nl_api
         run: python -m pytest -q -rs -W "error:Using .httpx. with .starlette.testclient.:DeprecationWarning" tests/api tests/unit
-      - name: L'API démarre avec uvicorn et répond
+      - name: L'API démarre avec uvicorn (connexion nl_api) et répond
+        env:
+          DATABASE_URL: postgresql+asyncpg://nl_api:ci-api-connection-pw@localhost:5432/nl_api
         run: |
           uvicorn app.main:create_app --factory --port 8000 --no-server-header &
           for i in $(seq 1 30); do curl -fsS localhost:8000/ready && break; sleep 1; done
@@ -290,16 +297,32 @@ jobs:
       - name: Configuration (racine et infra)
         run: |
           cp .env.example .env
+          # D14 : connexion applicative de l'API (secret aléatoire propre à l'exécution).
+          sed -i "s/^API_DB_PASSWORD=.*/API_DB_PASSWORD=$(openssl rand -hex 24)/" .env
           docker compose config -q
           docker compose config --services | sort | tr '\n' ' ' | tee /tmp/services
-          grep -q "api mailpit postgres redis s3 web" /tmp/services
+          grep -q "api mailpit migrate postgres redis s3 web" /tmp/services
+          # L'API ne reçoit AUCUN identifiant d'administration ; seule `migrate` les détient.
+          docker compose config --format json | python3 -c "import json,sys; s=json.load(sys.stdin)['services']; e=s['api']['environment']; assert '//nl_api:' in e['DATABASE_URL'] and not any(k in e for k in ('POSTGRES_PASSWORD','MEDIA_SCANNER_DB_PASSWORD','API_DB_PASSWORD')), 'API : identifiants'; print('api: nl_api uniquement')"
           # Profil « media » (2.2.3-c) : ClamAV et worker, absents de la pile par défaut.
           docker compose --profile media config -q
           docker compose --profile media config --services | sort | tr '\n' ' ' | tee /tmp/media
           grep -q "clamd freshclam mailpit media-worker" /tmp/media
           test -z "$(docker compose --profile media config | sed -n '/^  clamd:/,/^  [a-z-]*:$/p' | grep -E '^\s+ports:')"
       - name: docker compose up --build -d (attente de la santé)
-        run: docker compose up --build -d --wait --wait-timeout 300
+        run: |
+          # `up --wait` échoue quand le conteneur ponctuel `migrate` se termine (même avec le code 0) :
+          # attente explicite — services en marche et sains, `migrate` terminé avec le code 0.
+          wait_stack() {
+            for i in $(seq 1 "$1"); do
+              bad=$(docker compose $2 ps -a --format '{{.Service}}|{{.State}}|{{.Health}}|{{.ExitCode}}' | awk -F'|' '$1=="migrate" { if ($2!="exited" || $4!="0") print; next } $2!="running" || ($3!="" && $3!="healthy")')
+              [ -z "$bad" ] && return 0
+              sleep 5
+            done
+            echo "Services non prêts : $bad"; docker compose $2 logs --tail 40 migrate; return 1
+          }
+          docker compose up --build -d
+          wait_stack 60 ""
       - name: API, Web et communication interne
         run: |
           curl -fsS localhost:28000/ready | grep -q '"database":"ok"'
@@ -307,11 +330,40 @@ jobs:
           curl -fsS localhost:3000/fr/pays | grep -q "Sénégal"
           curl -fsS "localhost:3000/fr/metiers?j=CA-QC" | grep -q "non encore validé"
           docker compose exec -T web node -e "fetch('http://api:8000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+          # D14 : migrations terminées par `migrate` ; l'API connectée en nl_api, sans droit d'administration.
+          test "$(docker compose ps -a migrate --format '{{.ExitCode}}')" = "0"
+          docker compose exec -T postgres psql -U nurselearn -d nurselearn -v ON_ERROR_STOP=1 -q -f /database/checks/verify_head.sql
+          test "$(docker compose exec -T postgres psql -U nurselearn -d nurselearn -Atc "SELECT count(*) FROM pg_stat_activity WHERE usename = 'nl_api'")" -ge 1
+          docker compose exec -T api python /dev/stdin <<'PY'
+          import asyncio, os
+          import asyncpg
+          async def main():
+              c = await asyncpg.connect(os.environ["DATABASE_URL"].replace("postgresql+asyncpg", "postgresql"))
+              assert await c.fetchval("SELECT current_user") == "nl_api"
+              try:
+                  await c.execute("ALTER TABLE media_assets DISABLE TRIGGER USER")
+              except asyncpg.InsufficientPrivilegeError:
+                  print("API = nl_api ; désactivation de déclencheur refusée")
+              else:
+                  raise SystemExit("D14 : l'API a pu désactiver un déclencheur")
+          asyncio.run(main())
+          PY
           test -z "$(curl -fsS -H 'Origin: https://evil.example' -D - -o /dev/null localhost:28000/api/v1/countries | grep -i access-control-allow-origin)"
       - name: Profil media (2.2.3-c) — ClamAV, worker d'analyse, identité de service, mémoire réelle
         run: |
           echo "MEDIA_SCANNER_DB_PASSWORD=$(openssl rand -hex 24)" >> .env
-          docker compose --profile media up -d --build --wait --wait-timeout 900
+          # `up --wait` échoue quand le conteneur ponctuel `migrate` se termine (même avec le code 0) :
+          # attente explicite — services en marche et sains, `migrate` terminé avec le code 0.
+          wait_stack() {
+            for i in $(seq 1 "$1"); do
+              bad=$(docker compose $2 ps -a --format '{{.Service}}|{{.State}}|{{.Health}}|{{.ExitCode}}' | awk -F'|' '$1=="migrate" { if ($2!="exited" || $4!="0") print; next } $2!="running" || ($3!="" && $3!="healthy")')
+              [ -z "$bad" ] && return 0
+              sleep 5
+            done
+            echo "Services non prêts : $bad"; docker compose $2 logs --tail 40 migrate; return 1
+          }
+          docker compose --profile media up -d --build
+          wait_stack 180 "--profile media"
           docker compose exec -T media-worker python -c "from app.core.config import get_settings as g; from app.workers.media_scan import MediaScanWorker as W; w = W(g()); w.store.connect(); print('identite', w.store.conn.info.user); print(w.clamd.version())"
           # clamd n'est joignable ni depuis l'hôte, ni depuis l'API (réseau interne media-scan).
           ! (exec 3<>/dev/tcp/127.0.0.1/3310) 2>/dev/null

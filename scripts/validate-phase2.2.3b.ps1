@@ -51,7 +51,7 @@ function Anon([string]$method, [string]$uri, [string]$body = $null) {
 Log "NurseLearn AI — validation étape 2.2.3-b — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_phase_2_2_3b" ($branch -like "phase-2.2.3[b-z]*") $branch
+Result "branche_phase_2_2_3b" ($branch -like "phase-2.2.3[b-z]*" -or $branch -like "security-*") $branch
 $dirty = (git status --porcelain --untracked-files=no 2>$null | Where-Object { $_ -notmatch 'docs/validation-logs' }) -join " "
 Result "git_sans_modification_locale" ([string]::IsNullOrWhiteSpace($dirty)) $dirty
 # 2.2.3-b ne touche à AUCUNE migration : aucune différence sous database/ depuis la base de la branche.
@@ -90,7 +90,7 @@ if ($reg12) {
 # 2. Contrôles 2.2.3-b (lecture seule)
 # -----------------------------------------------------------------------------
 $rev = Psql "SELECT version_num FROM alembic_version"
-Result "migration_0007_toujours_en_tete" ($rev -in @("0007_secure_media_foundation", "0008_media_scanner_role")) $rev
+Result "migration_0007_toujours_en_tete" ($rev -match '^000[7-9]_') $rev
 $scan = Psql "SELECT count(*) FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE rp.permission_code = 'media:scan' AND r.code <> 'media_scanner'"
 Result "aucun_role_ne_detient_media_scan" ($scan -eq "0") "rôles hors media_scanner=$scan"
 $clean = Psql "SELECT count(*) FROM media_assets m WHERE m.state = 'clean' AND NOT EXISTS (SELECT 1 FROM media_scan_events e WHERE e.media_id = m.id AND e.attempt = m.scan_attempt AND e.result = 'clean' AND e.sha256 = m.sha256)"

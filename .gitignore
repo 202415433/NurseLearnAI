@@ -20,3 +20,6 @@ build/
 
 # Rapports de validation locaux (journaux, audits npm) : preuves conservées sur le poste, hors Git
 docs/validation-logs/*.json
+
+# Sauvegardes locales avant migration (D14) : jamais versionnées
+backups/

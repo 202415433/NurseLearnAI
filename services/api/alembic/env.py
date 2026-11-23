@@ -42,6 +42,13 @@ def run_migrations_online() -> None:
         context.configure(connection=connection, target_metadata=target_metadata, transaction_per_migration=True)
         with context.begin_transaction():
             context.run_migrations()
+        # D14 (migration 0009) : tout objet créé par une migration revient au propriétaire nl_owner.
+        # Sans effet avant 0009 (fonction absente) ; exige la connexion d'administration du cluster.
+        connection.exec_driver_sql(
+            "DO $$ BEGIN IF to_regprocedure('public.nl_enforce_ownership(name)') IS NOT NULL THEN "
+            "PERFORM nl_enforce_ownership(); END IF; END $$"
+        )
+        connection.commit()
 
 
 if context.is_offline_mode():

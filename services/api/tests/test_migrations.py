@@ -94,7 +94,7 @@ def test_revision_chain_is_linear():
     heads = [r for r in revs if not any(m.down_revision == r for m in revs.values())]
     roots = [r for r, m in revs.items() if m.down_revision is None]
     assert roots == ["0001_initial_schema"]
-    assert heads == ["0008_media_scanner_role"]
+    assert heads == ["0009_postgres_role_separation"]
     for r, m in revs.items():
         assert m.down_revision is None or m.down_revision in revs, r
 
@@ -104,7 +104,7 @@ def _has_vector() -> bool:
 
 
 def test_core_upgrade_downgrade_upgrade_on_postgres():
-    # Sans pgvector : 0001, 0003 à 0008 (aucune ne dépend des objets de 0002).
+    # Sans pgvector : 0001, 0003 à 0009 (aucune ne dépend des objets de 0002).
     _run_chain(
         [
             "0001_initial_schema",
@@ -114,6 +114,7 @@ def test_core_upgrade_downgrade_upgrade_on_postgres():
             "0006_independent_versions",
             "0007_secure_media_foundation",
             "0008_media_scanner_role",
+            "0009_postgres_role_separation",
         ]
     )
 
@@ -131,6 +132,7 @@ def test_pgvector_revision_on_postgres():
             "0006_independent_versions",
             "0007_secure_media_foundation",
             "0008_media_scanner_role",
+            "0009_postgres_role_separation",
         ]
     )
 

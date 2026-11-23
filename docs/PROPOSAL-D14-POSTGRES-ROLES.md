@@ -1,8 +1,17 @@
 # Proposition — D14 : séparation des rôles PostgreSQL
 
-> **Statut : proposition, non développée.** Elle devient une **condition BLOQUANTE avant 2.2.3-d** (diffusion des
-> médias) et avant toute production. Jusqu'ici, D14 était prévue au lot 2.5 ([PHASE2.2.3-PLAN.md](PHASE2.2.3-PLAN.md) § D14).
-> Références : [VALIDATION-PHASE2.2.3C.md](VALIDATION-PHASE2.2.3C.md) § 8 · [PHASE2.2.3D-READINESS.md](PHASE2.2.3D-READINESS.md).
+> **Statut : IMPLÉMENTÉE** sur la branche `security-d14-postgres-role-separation` (migration additive
+> `0009_postgres_role_separation`), en attente de validation Windows et d'autorisation.
+> Résultats et écarts : [VALIDATION-D14-POSTGRES-ROLES.md](VALIDATION-D14-POSTGRES-ROLES.md).
+>
+> **Écarts retenus** :
+> - pas de `nl_migrator` non superutilisateur : migrations par l'administration du cluster, dans le seul
+>   conteneur ponctuel `migrate` ;
+> - propriété rétablie par `nl_enforce_ownership()` après chaque Alembic ;
+> - deux contournements supplémentaires corrigés (`nl.role_grant_bypass`, `nl.editorial_log`) ;
+> - droit `TEMPORARY` retiré.
+>
+> Le § 7 (notification ClamAV) reste une proposition non implémentée.
 
 ## 1. Constat
 

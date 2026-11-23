@@ -60,6 +60,26 @@ BEGIN
      OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_media_assets_05_scanner')
      OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_media_scan_events_05_scanner') THEN
     RAISE EXCEPTION 'Migration 0008 non appliquée (rôle de service, connexion dédiée ou gardes absents)'; END IF;
+  -- 0009 (D14) : tout le schéma appartient à nl_owner (NOLOGIN, sans membre) ; l'API ne possède rien,
+  -- n'est membre de rien, ne crée rien (ni objet, ni table temporaire) ; SECURITY DEFINER verrouillées.
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nl_owner' AND NOT rolcanlogin AND NOT rolsuper)
+     OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nl_api' AND NOT rolsuper AND NOT rolcreaterole
+                    AND NOT rolcreatedb AND NOT rolbypassrls AND NOT rolreplication)
+     OR EXISTS (SELECT 1 FROM pg_auth_members m JOIN pg_roles g ON g.oid = m.roleid JOIN pg_roles u ON u.oid = m.member
+                 WHERE g.rolname = 'nl_owner' OR u.rolname IN ('nl_api', 'nl_media_scanner'))
+     OR (SELECT nspowner FROM pg_namespace WHERE nspname = 'public') <> 'nl_owner'::regrole
+     OR EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = 'public' AND c.relowner <> 'nl_owner'::regrole
+                   AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e'))
+     OR EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'public' AND p.proowner <> 'nl_owner'::regrole
+                   AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e'))
+     OR EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'public' AND p.prosecdef
+                   AND (p.proconfig IS NULL OR has_function_privilege('public', p.oid, 'EXECUTE')))
+     OR has_schema_privilege('nl_api', 'public', 'CREATE')
+     OR has_database_privilege('nl_api', current_database(), 'TEMPORARY') THEN
+    RAISE EXCEPTION 'Migration 0009 (D14) non appliquée : propriétaires, rôles ou privilèges non conformes'; END IF;
   SELECT count(*) INTO n_trg FROM pg_trigger WHERE NOT tgisinternal;
   SELECT count(*) INTO n_idx FROM pg_indexes WHERE schemaname = 'public';
 

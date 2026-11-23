@@ -69,12 +69,35 @@ services:
       - "127.0.0.1:1025:1025"
       - "127.0.0.1:8025:8025"
 
+  migrate:                                  # D14 : migrations et données de référence, puis arrêt
+    build:
+      context: ..
+      dockerfile: services/api/Dockerfile
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Seul conteneur détenteur de la connexion d'ADMINISTRATION (propriétaire via nl_owner) ;
+    # il pose aussi les mots de passe des connexions applicatives nl_api et nl_media_scanner.
+    command: ["sh", "-c", "n=0; until alembic upgrade head; do n=$$((n+1)); if [ $$n -ge 10 ]; then echo 'migrations impossibles : base injoignable' >&2; exit 1; fi; sleep 3; done && python -m app.seed"]
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-nurselearn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nurselearn}
+      API_DB_PASSWORD: ${API_DB_PASSWORD:?API_DB_PASSWORD doit être défini dans .env (D14)}
+      MEDIA_SCANNER_DB_PASSWORD: ${MEDIA_SCANNER_DB_PASSWORD:-}
+      LOG_LEVEL: INFO
+    security_opt: ["no-new-privileges:true"]
+
   api:                                      # API FastAPI (Phases 1.2 à 2.1)
     build:
       context: ..
       dockerfile: services/api/Dockerfile
     restart: unless-stopped
+    # D14 : l'API ne migre plus ; elle se connecte en nl_api (ni superutilisateur, ni propriétaire).
+    command: ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -85,7 +108,8 @@ services:
         condition: service_healthy
     environment:
       APP_ENV: ${APP_ENV:-development}
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-nurselearn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nurselearn}
+      # Connexion APPLICATIVE nl_api (D14) : aucun identifiant d'administration dans ce conteneur.
+      DATABASE_URL: postgresql+asyncpg://nl_api:${API_DB_PASSWORD:?API_DB_PASSWORD doit être défini dans .env (D14)}@postgres:5432/${POSTGRES_DB:-nurselearn}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       # Origines autorisées à appeler l'API depuis un navigateur (GET uniquement).
       CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost:3000","http://127.0.0.1:3000"]}'
@@ -122,9 +146,6 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY doit être défini}
       MEDIA_QUARANTINE_BUCKET: ${MEDIA_QUARANTINE_BUCKET:-nl-media-quarantine}
       MEDIA_CLEAN_BUCKET: ${MEDIA_CLEAN_BUCKET:-nl-media-clean}
-      # Analyse antivirus (2.2.3-c) : au démarrage, ouvre la connexion de SERVICE PostgreSQL
-      # nl_media_scanner avec ce mot de passe (vide = connexion fermée, worker inutilisable).
-      MEDIA_SCANNER_DB_PASSWORD: ${MEDIA_SCANNER_DB_PASSWORD:-}
     ports:
       - "127.0.0.1:${API_PORT:-28000}:8000"
 
@@ -190,8 +211,10 @@ services:
     command: ["python", "-m", "app.workers.media_scan"]
     restart: unless-stopped
     depends_on:
+      migrate:
+        condition: service_completed_successfully   # migrations, données de référence, connexion de service
       api:
-        condition: service_healthy           # migrations, données de référence et connexion de service prêtes
+        condition: service_healthy
       clamd:
         condition: service_healthy
       redis:

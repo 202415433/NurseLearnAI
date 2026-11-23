@@ -39,7 +39,7 @@ Log "NurseLearn AI — validation sous-lot 2.2.1 — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
 # Branche 2.2.1 ou ultérieure : le script sert aussi de non-régression aux étapes suivantes.
-Result "branche_phase_2_2_1_ou_ulterieure" ($branch -match '^phase-2\.2\.' -or $branch -eq "main") $branch
+Result "branche_phase_2_2_1_ou_ulterieure" ($branch -match '^phase-2\.2\.' -or $branch -eq "main" -or $branch -like "security-*") $branch
 
 # -----------------------------------------------------------------------------
 # 1. Non-régression complète (2.1 → 2.0 → 1.2)

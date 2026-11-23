@@ -76,6 +76,7 @@ MIGRATIONS = [
     "0006_independent_program_versions",
     "0007_secure_media_foundation",
     "0008_media_scanner_role",
+    "0009_postgres_role_separation",
 ]
 
 

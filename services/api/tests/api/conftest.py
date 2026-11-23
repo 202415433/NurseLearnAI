@@ -36,7 +36,20 @@ def client(settings: Settings) -> Iterator[TestClient]:
 
 @pytest.fixture(scope="session")
 def sync_engine(settings: Settings) -> Iterator[Engine]:
-    engine = create_engine(settings.sync_database_url)
+    """Connexion des FIXTURES (préparation et contrôle des données de test).
+
+    D14 : l'application testée se connecte avec DATABASE_URL (rôle nl_api en CI et sous Windows) ;
+    les fixtures, qui créent des données hors API, utilisent la connexion d'administration
+    NL_TEST_ADMIN_DATABASE_URL lorsqu'elle est fournie.
+    """
+    admin = os.environ.get("NL_TEST_ADMIN_DATABASE_URL", "")
+    url = settings.sync_database_url
+    if admin:
+        for prefix in ("postgresql+asyncpg://", "postgresql://", "postgres://"):
+            if admin.startswith(prefix):
+                admin = "postgresql+psycopg://" + admin[len(prefix) :]
+        url = admin
+    engine = create_engine(url)
     yield engine
     engine.dispose()
 
