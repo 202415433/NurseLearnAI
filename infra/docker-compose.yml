@@ -122,8 +122,111 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY doit être défini}
       MEDIA_QUARANTINE_BUCKET: ${MEDIA_QUARANTINE_BUCKET:-nl-media-quarantine}
       MEDIA_CLEAN_BUCKET: ${MEDIA_CLEAN_BUCKET:-nl-media-clean}
+      # Analyse antivirus (2.2.3-c) : au démarrage, ouvre la connexion de SERVICE PostgreSQL
+      # nl_media_scanner avec ce mot de passe (vide = connexion fermée, worker inutilisable).
+      MEDIA_SCANNER_DB_PASSWORD: ${MEDIA_SCANNER_DB_PASSWORD:-}
     ports:
       - "127.0.0.1:${API_PORT:-28000}:8000"
+
+  # ---------------------------------------------------------------------------------------------
+  # Analyse antivirus des médias (2.2.3-c, ADR-0011) — profil « media » :
+  #   docker compose --profile media up -d
+  # clamd et freshclam : image officielle Cisco-Talos (GPL-2.0, gratuite), version épinglée,
+  # signatures préchargées puis tenues à jour. Aucun port publié ; aucun accès au stockage S3.
+  # ---------------------------------------------------------------------------------------------
+  freshclam:                                # mises à jour des signatures (seul service ClamAV sur Internet)
+    image: clamav/clamav:1.5.5
+    profiles: ["media"]
+    restart: unless-stopped
+    environment:
+      CLAMAV_NO_CLAMD: "true"
+      CLAMAV_NO_MILTERD: "true"
+      FRESHCLAM_CHECKS: "12"               # 12 vérifications par jour
+    volumes:
+      - clamav-db:/var/lib/clamav          # signatures (volume dédié, jamais supprimé)
+      - clamav-sock:/run/clamav            # prévient clamd d'un rechargement
+    networks: [clamav-updates]
+    mem_limit: 1g
+    cpus: 0.5
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /var/lib/clamav/daily.cvd -o -s /var/lib/clamav/daily.cld"]
+      interval: 30s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  clamd:                                    # moteur d'analyse, joignable seulement par le worker
+    image: clamav/clamav:1.5.5
+    profiles: ["media"]
+    restart: unless-stopped
+    depends_on:
+      freshclam:
+        condition: service_healthy
+    environment:
+      CLAMAV_NO_FRESHCLAMD: "true"
+      CLAMAV_NO_MILTERD: "true"
+      CLAMD_STARTUP_TIMEOUT: "1800"
+    volumes:
+      - clamav-db:/var/lib/clamav
+      - clamav-sock:/run/clamav
+    networks: [media-scan]                  # réseau interne : ni Internet, ni base, ni stockage
+    # Pic de mémoire au rechargement des signatures (deux jeux en mémoire) : ≈ 2 × 1,1 Go.
+    mem_limit: 3g
+    cpus: 1.0
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
+
+  media-worker:                             # worker d'analyse : quarantaine → clamd → verdict → copie saine
+    build:
+      context: ..
+      dockerfile: services/api/Dockerfile
+    profiles: ["media"]
+    command: ["python", "-m", "app.workers.media_scan"]
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy           # migrations, données de référence et connexion de service prêtes
+      clamd:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      # Connexion de SERVICE (rôle nl_media_scanner, privilèges minimaux), jamais celle de l'API.
+      DATABASE_URL: postgresql://nl_media_scanner:${MEDIA_SCANNER_DB_PASSWORD:-}@postgres:5432/${POSTGRES_DB:-nurselearn}
+      MEDIA_SCANNER_DATABASE_URL: postgresql://nl_media_scanner:${MEDIA_SCANNER_DB_PASSWORD:-}@postgres:5432/${POSTGRES_DB:-nurselearn}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CLAMD_HOST: clamd
+      CLAMD_PORT: 3310
+      S3_ENDPOINT: http://s3:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-nurselearn}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY doit être défini}
+      MEDIA_QUARANTINE_BUCKET: ${MEDIA_QUARANTINE_BUCKET:-nl-media-quarantine}
+      MEDIA_CLEAN_BUCKET: ${MEDIA_CLEAN_BUCKET:-nl-media-clean}
+      MEDIA_TMP_DIR: /tmp
+      LOG_LEVEL: INFO
+    networks: [default, media-scan]
+    read_only: true
+    tmpfs:
+      - /tmp:size=450m,mode=1777            # copie temporaire d'un média (200 Mio au plus), effacée après analyse
+    mem_limit: 1g
+    cpus: 0.5
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys,time; p='/tmp/nl-media-worker.alive'; sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p) < 120 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 4
+      start_period: 60s
 
   web:                                      # Interface Next.js (Phases 1.2 à 2.1)
     build:
@@ -146,7 +249,15 @@ services:
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"
 
+networks:
+  default: {}
+  media-scan:
+    internal: true                          # clamd ↔ worker seulement, sans sortie Internet
+  clamav-updates: {}                        # freshclam ↔ miroirs de signatures seulement
+
 volumes:
   pgdata:
   redisdata:
   s3data:
+  clamav-db:                                # signatures ClamAV (persistant)
+  clamav-sock:

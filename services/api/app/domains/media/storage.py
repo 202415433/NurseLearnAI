@@ -4,7 +4,10 @@
 * clés aléatoires `uuid/uuid`, jamais dérivées d'un nom de fichier ni d'un identifiant métier ;
 * AUCUNE URL publique ni présignée : ce module n'en produit pas, et aucune politique de compartiment
   n'est posée (un compartiment S3 est privé par défaut) ;
-* en 2.2.3-b, l'API n'écrit qu'en quarantaine et ne lit jamais les octets.
+* en 2.2.3-b, l'API n'écrit qu'en quarantaine et ne lit jamais les octets ;
+* en 2.2.3-c, seul le worker d'analyse lit la quarantaine et écrit dans le compartiment sain,
+  après un verdict « clean » (méthodes synchrones `*_sync`, hors boucle asynchrone) ;
+  il ne supprime jamais un objet qu'il n'a pas lui-même écrit lors de la même tentative.
 
 Le client boto3 (synchrone) est appelé dans un fil d'exécution séparé pour ne pas bloquer l'API.
 """
@@ -26,6 +29,10 @@ log = logging.getLogger("nurselearn.media.storage")
 
 class StorageUnavailable(RuntimeError):
     """Stockage injoignable ou en erreur : le téléversement échoue proprement (503), sans fuite."""
+
+
+class ObjectMissing(RuntimeError):
+    """Objet attendu absent du stockage (supprimé hors application)."""
 
 
 def random_key() -> str:
@@ -97,3 +104,75 @@ class MediaStorage:
             await run_in_threadpool(self.client.delete_object, Bucket=self.quarantine, Key=key)
         except Exception as exc:
             log.warning("nettoyage_impossible", extra={"operation": "delete", "error": type(exc).__name__})
+
+    # ------------------------------------------------------------------ worker d'analyse (synchrone)
+    def download_quarantine_sync(self, key: str, dest: Path, max_bytes: int) -> int:
+        """Copie l'objet de quarantaine dans `dest` (au plus max_bytes + 1 octets lus) ; renvoie la taille."""
+        from botocore.exceptions import ClientError  # type: ignore[import-untyped]
+
+        try:
+            obj = self.client.get_object(Bucket=self.quarantine, Key=key)
+        except ClientError as exc:
+            code = str(exc.response.get("Error", {}).get("Code", ""))
+            if code in ("NoSuchKey", "404", "NotFound"):
+                raise ObjectMissing(key) from None
+            raise StorageUnavailable(code or "erreur S3") from None
+        except Exception as exc:
+            raise StorageUnavailable(type(exc).__name__) from None
+        total = 0
+        try:
+            with dest.open("wb") as out:
+                for chunk in obj["Body"].iter_chunks(1 << 20):
+                    total += len(chunk)
+                    if total > max_bytes:
+                        break  # taille incohérente : l'appelant refuse, inutile de lire davantage
+                    out.write(chunk)
+        except Exception as exc:
+            raise StorageUnavailable(type(exc).__name__) from None
+        finally:
+            obj["Body"].close()
+        return total
+
+    def put_clean_sync(self, key: str, path: Path, sha256_hex: str) -> None:
+        """Dépose la copie validée (octets vérifiés et analysés) dans le compartiment sain, privé."""
+        try:
+            self._ensure_bucket(self.clean)
+            with path.open("rb") as body:
+                self.client.put_object(
+                    Bucket=self.clean,
+                    Key=key,
+                    Body=body,
+                    ContentType="application/octet-stream",
+                    Metadata={"sha256": sha256_hex},
+                )
+            head = self.client.head_object(Bucket=self.clean, Key=key)
+        except Exception as exc:
+            raise StorageUnavailable(type(exc).__name__) from None
+        if head.get("Metadata", {}).get("sha256") != sha256_hex:
+            raise StorageUnavailable("empreinte de la copie saine incohérente")
+
+    def delete_own_clean_copy_sync(self, key: str) -> None:
+        """Retire une copie saine écrite par la tentative en cours et jamais enregistrée en base."""
+        try:
+            self.client.delete_object(Bucket=self.clean, Key=key)
+        except Exception as exc:
+            log.warning("nettoyage_copie_impossible", extra={"error": type(exc).__name__})
+
+    def list_keys_sync(self, bucket: str, limit: int = 100_000) -> set[str]:
+        """Clés d'un compartiment (réconciliation) ; compartiment absent = ensemble vide."""
+        from botocore.exceptions import ClientError  # type: ignore[import-untyped]
+
+        keys: set[str] = set()
+        try:
+            for page in self.client.get_paginator("list_objects_v2").paginate(Bucket=bucket):
+                for item in page.get("Contents", []):
+                    keys.add(item["Key"])
+                    if len(keys) >= limit:
+                        return keys
+        except ClientError as exc:
+            if str(exc.response.get("Error", {}).get("Code", "")) in ("NoSuchBucket", "404", "NotFound"):
+                return keys
+            raise StorageUnavailable(type(exc).__name__) from None
+        except Exception as exc:
+            raise StorageUnavailable(type(exc).__name__) from None
+        return keys

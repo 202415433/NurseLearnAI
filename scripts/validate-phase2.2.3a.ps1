@@ -71,17 +71,19 @@ if ($reg12) {
 # 2. Contrôles 2.2.3-a (base de développement)
 # -----------------------------------------------------------------------------
 $rev = Psql "SELECT version_num FROM alembic_version"
-Result "migration_0007_en_tete" ($rev -eq "0007_secure_media_foundation") $rev
+# 0007 ou une migration additive ultérieure (0008, 2.2.3-c) lorsque ce script est enchaîné.
+Result "migration_0007_en_tete" ($rev -in @("0007_secure_media_foundation", "0008_media_scanner_role")) $rev
 $total = Psql "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'alembic_version'"
 Result "75_tables" ($total -eq "75") "tables=$total"
 $tables = Psql "SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('lesson_version_media','media_assets','media_scan_events','media_usage','learning_resources')"
 Result "quatre_tables_medias_et_learning_resources_conservee" ($tables -eq "learning_resources,lesson_version_media,media_assets,media_scan_events,media_usage") $tables
 $verify = (docker compose exec -T postgres psql -U $PGU -d $PGDB -X -q -v ON_ERROR_STOP=1 -f /database/checks/verify_head.sql 2>&1 | ForEach-Object { "$_" }) -join " "
 Result "schema_tete_verifie" ($verify -match "OK : 75 tables") $verify
-$scan = Psql "SELECT count(*) FROM role_permissions WHERE permission_code = 'media:scan'"
-Result "aucun_role_ne_detient_media_scan" ($scan -eq "0") "rôles=$scan"
-$clean = Psql "SELECT count(*) FROM media_assets WHERE state = 'clean'"
-Result "aucun_media_diffusable" ($clean -eq "0") "médias clean=$clean"
+$scan = Psql "SELECT count(*) FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE rp.permission_code = 'media:scan' AND r.code <> 'media_scanner'"
+Result "aucun_role_ne_detient_media_scan" ($scan -eq "0") "rôles hors media_scanner=$scan"
+# Depuis 2.2.3-c, un média peut être sain : jamais sans verdict « clean » traçable (même tentative, mêmes octets).
+$clean = Psql "SELECT count(*) FROM media_assets m WHERE m.state = 'clean' AND NOT EXISTS (SELECT 1 FROM media_scan_events e WHERE e.media_id = m.id AND e.attempt = m.scan_attempt AND e.result = 'clean' AND e.sha256 = m.sha256)"
+Result "aucun_media_diffusable" ($clean -eq "0") "médias clean sans verdict traçable=$clean"
 $probe = Psql "BEGIN; INSERT INTO role_permissions (role_id, permission_code) SELECT id, 'media:scan' FROM roles WHERE code = 'admin'; ROLLBACK;"
 Result "invariant_media_scan_refuse_a_l_admin" ($probe -match "media_scanner") "sonde annulée"
 $probe = Psql "BEGIN; INSERT INTO media_usage (scope_kind, quota_bytes) VALUES ('platform', 1); ROLLBACK;"

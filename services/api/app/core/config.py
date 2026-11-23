@@ -93,6 +93,24 @@ class Settings(BaseSettings):
     media_sandbox_memory_mib: int = Field(768, ge=256, le=4096)
     media_tmp_dir: str | None = None
 
+    # Analyse antivirus (2.2.3-c, ADR-0011, S5–S9) : worker séparé, jamais l'API.
+    # Connexion PostgreSQL DÉDIÉE (rôle nl_media_scanner, non superutilisateur) ; absente = worker inactif.
+    media_scanner_database_url: str | None = None
+    clamd_host: str | None = None
+    clamd_port: int = Field(3310, ge=1, le=65535)
+    # Délai maximal d'une analyse clamd (au-delà : verdict « timeout », jamais « clean »).
+    clamd_timeout_seconds: float = Field(120, gt=0, le=900)
+    # Âge maximal des signatures pour un verdict « clean » (S9 ; la base refuse au-delà de 48 h).
+    # 0 = aucune signature jugée fraîche : aucun verdict « clean » possible.
+    media_signature_max_age_hours: float = Field(48, ge=0, le=48)
+    # Bail d'une analyse : au-delà, la réconciliation clôt la tentative (« timeout ») et la relance.
+    media_scan_lease_seconds: int = Field(900, ge=1, le=14_400)
+    media_scan_max_attempts: int = Field(6, ge=1, le=20)
+    # Attente avant une nouvelle tentative après échec : base × 2^(tentative-1), plafonnée à 1 h.
+    media_scan_retry_base_seconds: int = Field(60, ge=0, le=3600)
+    media_scan_stream: str = "nl:media:scan"
+    media_scan_reconcile_seconds: int = Field(60, ge=1, le=3600)
+
     @model_validator(mode="after")
     def _production_guards(self) -> Settings:
         if self.app_env == "production" and any(o.strip() == "*" for o in self.cors_origins):

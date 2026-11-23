@@ -573,7 +573,14 @@ def test_nothing_is_ever_served(api: TestClient, mw: MWorld, sync_engine: Engine
     assert not any("/api/v1/media" in p for p in paths)  # aucune diffusion (2.2.3-d)
     body = api.get(f"{M}/{done['id']}", headers=mw.author.h)
     assert body.headers["content-type"].startswith("application/json") and "key" not in body.text.lower()
-    assert sql(sync_engine, "SELECT count(*) FROM media_assets WHERE state = 'clean'").scalar() == 0
+    # Le téléversement seul ne produit jamais un média sain ; depuis 2.2.3-c, seul un verdict antivirus
+    # traçable (même tentative, mêmes octets) le peut.
+    assert sql(sync_engine, "SELECT state FROM media_assets WHERE id = :i", i=done["id"]).scalar() == "quarantined"
+    untraceable = (
+        "SELECT count(*) FROM media_assets m WHERE m.state = 'clean' AND NOT EXISTS (SELECT 1 FROM media_scan_events e "
+        "WHERE e.media_id = m.id AND e.attempt = m.scan_attempt AND e.result = 'clean' AND e.sha256 = m.sha256)"
+    )
+    assert sql(sync_engine, untraceable).scalar() == 0
     if REAL_S3:  # stockage réel : la quarantaine refuse toute lecture anonyme
         import urllib.error
         import urllib.request
