@@ -184,7 +184,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.3d.ps1
 
 Le script : état Git ; secrets ; inventaire (volumes, base, objets) ; non-régression complète (R3 → D14 → 2.2.3-c → … → 1.2) ; services (dont `media-delivery`) ; identités PostgreSQL et RustFS ; signatures ClamAV ; points d'accès ; accès anonyme ; pytest de diffusion, Range, révocation et adversariaux, plus téléversement, analyse et identités, sur la pile réelle ; rapport de conservation ; journaux ; intégrité ; aucune publication médicale. Journal : `docs\validation-logs\phase2.2.3d-<date>.log`.
 
-*Résultats Windows : à compléter après exécution.*
+### Résultat (2026-11-23, journal `phase2.2.3d-20261123-153209.log`)
+
+**30/30 contrôles 2.2.3-d, 0 échec**, sur `2908dcf` :
+- non-régression : R3 32/32 ; D14 23/23 ; 2.2.3-c (ClamAV et EICAR réels) ; 9 tests adversariaux R3 ; politiques S3 persistantes après redémarrage ;
+- 9/9 services sains, dont `media-delivery` (127.0.0.1:28001) ;
+- diffusion : identité S3 `nl-media-reader` seule (ni clé racine, ni autre identité), connexion `nl_api` non superutilisateur ; sonde dans le conteneur : 9/9 opérations interdites refusées, lecture du compartiment sain permise ;
+- signatures ClamAV fraîches (14,4 h) ;
+- API d'édition : aucune route de diffusion (révocation seulement) ; diffusion : deux routes `GET` ;
+- accès anonyme : 401 (diffusion), 401 (session inconnue), 403 (S3) ;
+- `test_media_delivery.py` : **27/27 réussis** sur PostgreSQL, Redis, RustFS et ClamAV réels (dont 5 Range, 5 révocation, 16 adversariaux) ; téléversement, analyse et identités : 63/63 ;
+- rapport de conservation en lecture seule ; aucun secret ni URL de stockage dans les journaux ;
+- aucun volume, aucune donnée ni aucun objet perdu ; aucun programme médical publié ; pilote PAB en brouillon.
+
+Première exécution (`819a268`, 26/30) : les 27 tests de diffusion étaient déjà réussis, mais la fonction de comptage du script (`Group`) était masquée par l'alias PowerShell `group` (`Group-Object`) ; renommée dans `2908dcf`. Aucun de ces échecs ne concernait le code de diffusion.
 
 ## 11. Risques résiduels
 
