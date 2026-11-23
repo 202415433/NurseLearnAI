@@ -44,9 +44,22 @@ BEGIN
      OR to_regclass('public.lesson_version_media') IS NULL OR to_regclass('public.media_usage') IS NULL
      OR to_regprocedure('nl_media_expire_reservations()') IS NULL
      OR NOT EXISTS (SELECT 1 FROM permissions WHERE code = 'media:scan')
-     OR EXISTS (SELECT 1 FROM role_permissions WHERE permission_code = 'media:scan')
      OR to_regclass('public.learning_resources') IS NULL THEN
-    RAISE EXCEPTION 'Migration 0007 non appliquée ou permission media:scan attribuée prématurément'; END IF;
+    RAISE EXCEPTION 'Migration 0007 non appliquée'; END IF;
+  -- 0008 : media:scan détenue par le SEUL rôle de service media_scanner ; connexion PostgreSQL dédiée
+  -- non privilégiée ; gardes de session de service posées.
+  IF EXISTS (SELECT 1 FROM role_permissions rp JOIN roles r ON r.id = rp.role_id
+              WHERE rp.permission_code = 'media:scan' AND r.code <> 'media_scanner')
+     OR EXISTS (SELECT 1 FROM role_permissions rp JOIN roles r ON r.id = rp.role_id
+                 WHERE r.code = 'media_scanner' AND rp.permission_code <> 'media:scan') THEN
+    RAISE EXCEPTION 'Permission media:scan attribuée hors du rôle de service media_scanner'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM roles WHERE code = 'media_scanner')
+     OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nl_media_scanner' AND NOT rolsuper AND NOT rolcreaterole
+                    AND NOT rolcreatedb AND NOT rolbypassrls AND NOT rolreplication)
+     OR to_regprocedure('nl_is_media_scanner_session()') IS NULL
+     OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_media_assets_05_scanner')
+     OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_media_scan_events_05_scanner') THEN
+    RAISE EXCEPTION 'Migration 0008 non appliquée (rôle de service, connexion dédiée ou gardes absents)'; END IF;
   SELECT count(*) INTO n_trg FROM pg_trigger WHERE NOT tgisinternal;
   SELECT count(*) INTO n_idx FROM pg_indexes WHERE schemaname = 'public';
 

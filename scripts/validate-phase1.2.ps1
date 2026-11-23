@@ -217,6 +217,7 @@ $r = Run "pytest : base, migrations, API, unitaires (bases jetables)" {
         -e "DATABASE_URL=postgresql+asyncpg://${PGU}:${PGPW}@postgres:5432/nl_validation_api" `
         -e "REDIS_URL=redis://:$($envVars['REDIS_PASSWORD'])@redis:6379/0" `
         -e NL_TEST_S3_ENDPOINT=http://s3:9000 -e NL_TEST_S3_KIND=rustfs -e "S3_ACCESS_KEY=$S3AK" -e "S3_SECRET_KEY=$($envVars['S3_SECRET_KEY'])" `
+        -e "NL_TEST_SCANNER_PASSWORD=$($envVars['MEDIA_SCANNER_DB_PASSWORD'])" `
         -e DEBIAN_FRONTEND=noninteractive -e MAILPIT_URL=http://mailpit:8025 -e SMTP_HOST=mailpit -e SMTP_PORT=1025 -e NL_TEST_PGHOST=postgres -e NL_TEST_PGPORT=5432 -e NL_TEST_PGUSER=$PGU -e PGPASSWORD=$PGPW -e PYTHONDONTWRITEBYTECODE=1 `
         python:3.12-slim sh -c "apt-get update -qq >/dev/null && apt-get install -y -qq postgresql-client >/dev/null && cd services/api && pip install -q --disable-pip-version-check --root-user-action=ignore -e '.[dev]' && alembic upgrade head && python -m app.seed && cd /repo && python -m pytest -q -rs -p no:cacheprovider database/tests services/api/tests"
 }
@@ -234,7 +235,7 @@ Result "web_tests_vitest_playwright_axe" ($r.Code -eq 0) (($r.Out -split "`n" | 
 # -----------------------------------------------------------------------------
 $logs = (docker compose logs --no-color 2>&1 | Out-String)
 $leaks = 0
-foreach ($k in 'POSTGRES_PASSWORD','REDIS_PASSWORD','S3_SECRET_KEY','JWT_SIGNING_KEY','TOKEN_HASH_KEY') { $v = $envVars[$k]; if ($v -and $logs.Contains($v)) { $leaks++ } }
+foreach ($k in 'POSTGRES_PASSWORD','REDIS_PASSWORD','S3_SECRET_KEY','JWT_SIGNING_KEY','TOKEN_HASH_KEY','MEDIA_SCANNER_DB_PASSWORD') { $v = $envVars[$k]; if ($v -and $logs.Contains($v)) { $leaks++ } }
 Result "aucun_secret_dans_les_journaux" (($leaks -eq 0) -and ($logs.Length -gt 1024)) "($leaks fuite(s), $([int]($logs.Length/1024)) Ko)"
 
 Log ""; Log "================ SYNTHÈSE ================"

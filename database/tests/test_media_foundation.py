@@ -2,7 +2,10 @@
 
 Comptes et contenus FICTIFS. Aucun point d'accès, aucun worker : seuls le schéma et ses invariants
 sont testés. Le passage à `clean` n'est démontré QUE dans une base jetable où un rôle de test
-détient `media:scan` ; dans le schéma livré, aucun rôle ne la détient (aucun média diffusable).
+détient `media:scan` ; dans le schéma 0007, aucun rôle ne la détient (aucun média diffusable).
+
+Ces tests figent l'état « après 0007 » : les bases sont arrêtées à cette migration. Le rôle de
+service livré par 0008 et ses gardes supplémentaires sont testés dans test_media_scanner_role.py.
 """
 
 from __future__ import annotations
@@ -13,7 +16,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from conftest import MIGRATIONS, SCHEMA, Db, build_db, new_id
+from conftest import SCHEMA, Db, build_db, new_id
 from editorial import EditorialV2, q
 from test_program_versions import World, _signature
 
@@ -95,6 +98,17 @@ class Media:
         return int(self.db.sql(f"SELECT access_epoch FROM media_assets WHERE id = '{mid}'"))
 
 
+M7 = "0007_secure_media_foundation"
+
+
+@pytest.fixture(scope="module")
+def db():
+    """Base arrêtée à 0007 (masque la base de session au dernier état du schéma)."""
+    d = build_db(f"nl_m7_module_{os.getpid()}", upto=M7)
+    yield d
+    d.admin(f"DROP DATABASE IF EXISTS {d.name} WITH (FORCE)")
+
+
 @pytest.fixture
 def w(db) -> World:
     return World(db)
@@ -109,7 +123,7 @@ def m(db) -> Media:
 def scratch():
     created: list[Db] = []
 
-    def _make(tag: str, upto: str = MIGRATIONS[-1], seeds: bool = True) -> Db:
+    def _make(tag: str, upto: str = M7, seeds: bool = True) -> Db:
         d = build_db(f"nl_m7_{tag}_{os.getpid()}", upto=upto, seeds=seeds)
         created.append(d)
         return d

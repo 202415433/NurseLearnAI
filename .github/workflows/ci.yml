@@ -91,7 +91,7 @@ jobs:
   api:
     name: API FastAPI (tests sur PostgreSQL + Redis réels)
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -122,6 +122,13 @@ jobs:
           - rustfs-ci-data:/data
         options: >-
           --health-cmd "curl -fsS http://127.0.0.1:9000/health/ready || exit 1" --health-interval 5s --health-timeout 5s --health-retries 30
+      # ClamAV RÉEL (2.2.3-c) : même image que Docker Compose, signatures préchargées puis mises à jour
+      # par freshclam au démarrage. Les tests attendent des signatures de moins de 48 h.
+      clamav:
+        image: clamav/clamav:1.5.5
+        ports: ["3310:3310"]
+        options: >-
+          --health-cmd "clamdcheck.sh" --health-interval 10s --health-timeout 10s --health-retries 60 --health-start-period 30s
     env:
       DATABASE_URL: postgresql+asyncpg://postgres:ci@localhost:5432/nl_api
       REDIS_URL: redis://localhost:6379/0
@@ -130,6 +137,9 @@ jobs:
       NL_TEST_S3_KIND: rustfs
       S3_ACCESS_KEY: ci-media-access
       S3_SECRET_KEY: ci-media-secret-key
+      # Worker d'analyse sur ClamAV réel (EICAR, pannes, reprise).
+      NL_TEST_CLAMD_HOST: localhost
+      NL_TEST_CLAMD_PORT: "3310"
       # Courriels locaux (Mailpit) : test d'envoi réel sans service payant.
       MAILPIT_URL: http://localhost:8025
       SMTP_HOST: localhost
@@ -269,7 +279,7 @@ jobs:
   compose:
     name: Docker Compose (pile complète, santé, communication entre services)
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
       - name: Scripts PowerShell encodés en UTF-8 avec BOM (sinon Windows PowerShell 5.1 les lit en ANSI)
@@ -283,6 +293,11 @@ jobs:
           docker compose config -q
           docker compose config --services | sort | tr '\n' ' ' | tee /tmp/services
           grep -q "api mailpit postgres redis s3 web" /tmp/services
+          # Profil « media » (2.2.3-c) : ClamAV et worker, absents de la pile par défaut.
+          docker compose --profile media config -q
+          docker compose --profile media config --services | sort | tr '\n' ' ' | tee /tmp/media
+          grep -q "clamd freshclam mailpit media-worker" /tmp/media
+          test -z "$(docker compose --profile media config | sed -n '/^  clamd:/,/^  [a-z-]*:$/p' | grep -E '^\s+ports:')"
       - name: docker compose up --build -d (attente de la santé)
         run: docker compose up --build -d --wait --wait-timeout 300
       - name: API, Web et communication interne
@@ -293,6 +308,15 @@ jobs:
           curl -fsS "localhost:3000/fr/metiers?j=CA-QC" | grep -q "non encore validé"
           docker compose exec -T web node -e "fetch('http://api:8000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
           test -z "$(curl -fsS -H 'Origin: https://evil.example' -D - -o /dev/null localhost:28000/api/v1/countries | grep -i access-control-allow-origin)"
+      - name: Profil media (2.2.3-c) — ClamAV, worker d'analyse, identité de service, mémoire réelle
+        run: |
+          echo "MEDIA_SCANNER_DB_PASSWORD=$(openssl rand -hex 24)" >> .env
+          docker compose --profile media up -d --build --wait --wait-timeout 900
+          docker compose exec -T media-worker python -c "from app.core.config import get_settings as g; from app.workers.media_scan import MediaScanWorker as W; w = W(g()); w.store.connect(); print('identite', w.store.conn.info.user); print(w.clamd.version())"
+          # clamd n'est joignable ni depuis l'hôte, ni depuis l'API (réseau interne media-scan).
+          ! (exec 3<>/dev/tcp/127.0.0.1/3310) 2>/dev/null
+          ! docker compose exec -T api python -c "import socket; socket.create_connection(('clamd', 3310), timeout=3)" 2>/dev/null
+          docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' | grep -E 'clamd|freshclam|media-worker'
       - name: Persistance après redémarrage de PostgreSQL
         run: |
           docker compose restart postgres
