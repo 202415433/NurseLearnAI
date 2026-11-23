@@ -182,6 +182,8 @@ Aucun rôle n'est supprimé : `nl_owner` et `nl_api` sont conservés, et sans dr
 
 ## 7. Risques résiduels
 
+Audit détaillé de R1 (migrations privilégiées), R2 (lecture des tables) et R3 (clé S3 partagée), avec des propositions : [D14-RESIDUAL-RISKS.md](D14-RESIDUAL-RISKS.md).
+
 | Risque | Niveau | Traitement |
 |---|---|---|
 | L'identité **déclarée** par l'API (`nl.actor_id`) reste crue par la base : une API compromise peut agir au nom de n'importe quel utilisateur, **dans les limites de `nl_api`**. Elle ne peut ni produire un verdict, ni s'attribuer un rôle plateforme, ni toucher aux quotas, à l'audit ou aux gardes | Moyen | Inhérent à une application à connexion unique. Atténuation future : jeton d'acteur signé vérifié en base, ou rôles par fonction |
