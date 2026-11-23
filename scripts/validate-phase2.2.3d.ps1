@@ -193,15 +193,16 @@ Psql "DROP DATABASE IF EXISTS nl_validation_d3 WITH (FORCE)" "postgres" | Out-Nu
 $lines = @($pyOut -split "`n" | Where-Object { $_ -match '::test_\S+ (PASSED|FAILED|SKIPPED|ERROR)' } | ForEach-Object { $_.Trim() })
 foreach ($l in ($lines | Where-Object { $_ -match 'test_media_delivery' })) { Log "    $l" }
 foreach ($l in ($pyOut -split "`n" | Where-Object { $_ -match '^=+ .*(passed|failed|error).* =+$' })) { Log "    $($l.Trim())" }
-function Group([string]$pattern) { @($lines | Where-Object { $_ -match 'test_media_delivery' -and $_ -match $pattern }) }
-$dl = Group '.'
+# Nom distinct de « group » (alias PowerShell de Group-Object, prioritaire sur les fonctions).
+function TestsLike([string]$pattern) { @($lines | Where-Object { $_ -match 'test_media_delivery' -and $_ -match $pattern }) }
+$dl = TestsLike '.'
 $dlBad = @($dl | Where-Object { $_ -notmatch 'PASSED' })
 Result "tests_diffusion_sans_echec_ni_saut" ($pyCode -eq 0 -and $dl.Count -ge 25 -and $dlBad.Count -eq 0) "$($dl.Count) tests ; non réussis : $($dlBad -join ' | ')"
-$rg = Group 'range'
+$rg = TestsLike 'range'
 Result "tests_http_range" ($rg.Count -ge 4 -and @($rg | Where-Object { $_ -notmatch 'PASSED' }).Count -eq 0) "$($rg.Count) tests Range réussis"
-$rv = Group 'revoke|revoked|revocation|session|role_change|disabled|cut_when'
+$rv = TestsLike 'revoke|revoked|revocation|session|role_change|disabled|cut_when'
 Result "tests_revocation" ($rv.Count -ge 4 -and @($rv | Where-Object { $_ -notmatch 'PASSED' }).Count -eq 0) "$($rv.Count) tests de révocation réussis"
-$adv = Group 'never|refused|isolation|identifier|direct|read_only|incoherent|failure|rate_limit|concurrent|legal_hold|frozen|medical'
+$adv = TestsLike 'never|refused|isolation|identifier|direct|read_only|incoherent|failure|rate_limit|concurrent|legal_hold|frozen|medical'
 Result "tests_adversariaux" ($adv.Count -ge 12 -and @($adv | Where-Object { $_ -notmatch 'PASSED' }).Count -eq 0) "$($adv.Count) tests adversariaux réussis"
 $others = @($lines | Where-Object { $_ -notmatch 'test_media_delivery' })
 $othersBad = @($others | Where-Object { $_ -notmatch 'PASSED' })
