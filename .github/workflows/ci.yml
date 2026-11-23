@@ -299,11 +299,27 @@ jobs:
           cp .env.example .env
           # D14 : connexion applicative de l'API (secret aléatoire propre à l'exécution).
           sed -i "s/^API_DB_PASSWORD=.*/API_DB_PASSWORD=$(openssl rand -hex 24)/" .env
+          # R3 : une identité S3 par service (secrets aléatoires propres à l'exécution).
+          for v in S3_API_SECRET_KEY S3_SCANNER_SECRET_KEY S3_READER_SECRET_KEY; do
+            sed -i "s/^$v=.*/$v=$(openssl rand -hex 16)/" .env
+          done
           docker compose config -q
           docker compose config --services | sort | tr '\n' ' ' | tee /tmp/services
-          grep -q "api mailpit migrate postgres redis s3 web" /tmp/services
+          grep -q "api mailpit migrate postgres redis s3 s3-init web" /tmp/services
           # L'API ne reçoit AUCUN identifiant d'administration ; seule `migrate` les détient.
           docker compose config --format json | python3 -c "import json,sys; s=json.load(sys.stdin)['services']; e=s['api']['environment']; assert '//nl_api:' in e['DATABASE_URL'] and not any(k in e for k in ('POSTGRES_PASSWORD','MEDIA_SCANNER_DB_PASSWORD','API_DB_PASSWORD')), 'API : identifiants'; print('api: nl_api uniquement')"
+          # R3 : ni l'API ni le worker ne reçoivent la clé racine RustFS ; seul `s3-init` la détient.
+          docker compose --profile media config --format json | python3 -c "
+          import json,sys
+          s=json.load(sys.stdin)['services']; root=s['s3']['environment']['RUSTFS_SECRET_KEY']
+          a=s['api']['environment']; w=s['media-worker']['environment']; i=s['s3-init']['environment']
+          assert a['S3_ACCESS_KEY']=='nl-api-uploader' and w['S3_ACCESS_KEY']=='nl-media-scanner', 'identités'
+          assert root not in (a['S3_SECRET_KEY'], w['S3_SECRET_KEY']) and a['S3_SECRET_KEY']!=w['S3_SECRET_KEY'], 'réutilisation'
+          assert not any('READER' in k or 'ADMIN' in k for k in list(a)+list(w)), 'secret de lecture ou admin exposé'
+          assert i['S3_ADMIN_SECRET_KEY']==root
+          for n,svc in s.items():
+              if n not in ('s3','s3-init'): assert root not in json.dumps(svc.get('environment',{})), n
+          print('R3 : clé racine réservée à s3 et s3-init')"
           # Profil « media » (2.2.3-c) : ClamAV et worker, absents de la pile par défaut.
           docker compose --profile media config -q
           docker compose --profile media config --services | sort | tr '\n' ' ' | tee /tmp/media
@@ -315,11 +331,11 @@ jobs:
           # attente explicite — services en marche et sains, `migrate` terminé avec le code 0.
           wait_stack() {
             for i in $(seq 1 "$1"); do
-              bad=$(docker compose $2 ps -a --format '{{.Service}}|{{.State}}|{{.Health}}|{{.ExitCode}}' | awk -F'|' '$1=="migrate" { if ($2!="exited" || $4!="0") print; next } $2!="running" || ($3!="" && $3!="healthy")')
+              bad=$(docker compose $2 ps -a --format '{{.Service}}|{{.State}}|{{.Health}}|{{.ExitCode}}' | awk -F'|' '$1=="migrate" || $1=="s3-init" { if ($2!="exited" || $4!="0") print; next } $2!="running" || ($3!="" && $3!="healthy")')
               [ -z "$bad" ] && return 0
               sleep 5
             done
-            echo "Services non prêts : $bad"; docker compose $2 logs --tail 40 migrate; return 1
+            echo "Services non prêts : $bad"; docker compose $2 logs --tail 40 migrate s3-init; return 1
           }
           docker compose up --build -d
           wait_stack 60 ""
@@ -332,6 +348,11 @@ jobs:
           docker compose exec -T web node -e "fetch('http://api:8000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
           # D14 : migrations terminées par `migrate` ; l'API connectée en nl_api, sans droit d'administration.
           test "$(docker compose ps -a migrate --format '{{.ExitCode}}')" = "0"
+          # R3 : identités S3 provisionnées et vérifiées ; l'API n'a que l'écriture en quarantaine.
+          test "$(docker compose ps -a s3-init --format '{{.ExitCode}}')" = "0"
+          docker compose run --rm --no-deps -T s3-init python -m app.ops.s3_provision --check
+          docker compose cp scripts/r3_s3_probe.py api:/tmp/r3_s3_probe.py
+          docker compose exec -T api python /tmp/r3_s3_probe.py api
           docker compose exec -T postgres psql -U nurselearn -d nurselearn -v ON_ERROR_STOP=1 -q -f /database/checks/verify_head.sql
           test "$(docker compose exec -T postgres psql -U nurselearn -d nurselearn -Atc "SELECT count(*) FROM pg_stat_activity WHERE usename = 'nl_api'")" -ge 1
           docker compose exec -T api python /dev/stdin <<'PY'
@@ -356,11 +377,11 @@ jobs:
           # attente explicite — services en marche et sains, `migrate` terminé avec le code 0.
           wait_stack() {
             for i in $(seq 1 "$1"); do
-              bad=$(docker compose $2 ps -a --format '{{.Service}}|{{.State}}|{{.Health}}|{{.ExitCode}}' | awk -F'|' '$1=="migrate" { if ($2!="exited" || $4!="0") print; next } $2!="running" || ($3!="" && $3!="healthy")')
+              bad=$(docker compose $2 ps -a --format '{{.Service}}|{{.State}}|{{.Health}}|{{.ExitCode}}' | awk -F'|' '$1=="migrate" || $1=="s3-init" { if ($2!="exited" || $4!="0") print; next } $2!="running" || ($3!="" && $3!="healthy")')
               [ -z "$bad" ] && return 0
               sleep 5
             done
-            echo "Services non prêts : $bad"; docker compose $2 logs --tail 40 migrate; return 1
+            echo "Services non prêts : $bad"; docker compose $2 logs --tail 40 migrate s3-init; return 1
           }
           docker compose --profile media up -d --build
           wait_stack 180 "--profile media"
@@ -368,12 +389,21 @@ jobs:
           # clamd n'est joignable ni depuis l'hôte, ni depuis l'API (réseau interne media-scan).
           ! (exec 3<>/dev/tcp/127.0.0.1/3310) 2>/dev/null
           ! docker compose exec -T api python -c "import socket; socket.create_connection(('clamd', 3310), timeout=3)" 2>/dev/null
+          # R3 : le worker lit la quarantaine et écrit le compartiment sain, sans aucun droit d'administration.
+          docker compose cp scripts/r3_s3_probe.py media-worker:/tmp/r3_s3_probe.py
+          docker compose exec -T media-worker python /tmp/r3_s3_probe.py scanner
           docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' | grep -E 'clamd|freshclam|media-worker'
       - name: Persistance après redémarrage de PostgreSQL
         run: |
           docker compose restart postgres
           for i in $(seq 1 30); do curl -fsS localhost:28000/ready && break; sleep 2; done
           curl -fsS "localhost:28000/api/v1/jurisdictions?country=CA" | grep -q '"total":5'
+      - name: Persistance des identités et politiques S3 après redémarrage de RustFS (R3)
+        run: |
+          docker compose restart s3
+          for i in $(seq 1 30); do [ "$(docker compose ps s3 --format '{{.Health}}')" = "healthy" ] && break; sleep 2; done
+          docker compose run --rm --no-deps -T s3-init python -m app.ops.s3_provision --check
+          docker compose exec -T api python /tmp/r3_s3_probe.py api
       - name: Journaux en cas d'échec
         if: failure()
         run: docker compose logs --tail 100

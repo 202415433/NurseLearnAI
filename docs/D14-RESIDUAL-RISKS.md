@@ -66,6 +66,8 @@ Chaque étape doit être accompagnée de tests de refus sous `nl_api`, de la sui
 
 ## R3 — Clé S3 partagée entre l'API et le worker
 
+> **Statut : implémenté** sur la branche `security-r3-s3-identity-separation` (trois identités RustFS, conteneur `s3-init`, clé racine réservée au provisionnement, tests adversariaux sur RustFS réel). Détails, matrice définitive et risques restants : [VALIDATION-R3-S3-IDENTITIES.md](VALIDATION-R3-S3-IDENTITIES.md). La proposition ci-dessous est conservée pour l'historique ; écarts retenus : `HeadObject` relève de `s3:GetObject` en IAM, l'API n'a pas `HeadBucket` (403 toléré), et l'identité de lecture n'est remise à aucun service avant 2.2.3-d.
+
 **Opérations S3 nécessaires** (code actuel : `app/domains/media/storage.py`, worker) :
 
 | Opération | API | Worker | Diffusion (2.2.3-d, à venir) |

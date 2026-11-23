@@ -69,6 +69,28 @@ services:
       - "127.0.0.1:1025:1025"
       - "127.0.0.1:8025:8025"
 
+  s3-init:                                  # R3 : identités et compartiments S3, puis arrêt
+    build:
+      context: ..
+      dockerfile: services/api/Dockerfile
+    restart: "no"
+    depends_on:
+      s3:
+        condition: service_healthy
+    # Seul conteneur applicatif détenteur de la clé d'ADMINISTRATION RustFS (racine) : crée les
+    # compartiments privés, les politiques IAM et les trois identités, puis s'arrête.
+    command: ["python", "-m", "app.ops.s3_provision"]
+    environment:
+      S3_ENDPOINT: http://s3:9000
+      S3_ADMIN_ACCESS_KEY: ${S3_ACCESS_KEY:-nurselearn}
+      S3_ADMIN_SECRET_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY doit être défini}
+      S3_API_SECRET_KEY: ${S3_API_SECRET_KEY:?S3_API_SECRET_KEY doit être défini dans .env (R3)}
+      S3_SCANNER_SECRET_KEY: ${S3_SCANNER_SECRET_KEY:?S3_SCANNER_SECRET_KEY doit être défini dans .env (R3)}
+      S3_READER_SECRET_KEY: ${S3_READER_SECRET_KEY:?S3_READER_SECRET_KEY doit être défini dans .env (R3)}
+      MEDIA_QUARANTINE_BUCKET: ${MEDIA_QUARANTINE_BUCKET:-nl-media-quarantine}
+      MEDIA_CLEAN_BUCKET: ${MEDIA_CLEAN_BUCKET:-nl-media-clean}
+    security_opt: ["no-new-privileges:true"]
+
   migrate:                                  # D14 : migrations et données de référence, puis arrêt
     build:
       context: ..
@@ -97,6 +119,8 @@ services:
     command: ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      s3-init:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
@@ -142,8 +166,9 @@ services:
       # Médias protégés (2.2.3-b) : stockage S3 PRIVÉ RustFS, joint uniquement par le réseau interne.
       # Aucune URL publique ni présignée ; le navigateur n'accède jamais au stockage.
       S3_ENDPOINT: http://s3:9000
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-nurselearn}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY doit être défini}
+      # R3 : identité S3 de TÉLÉVERSEMENT (écriture en quarantaine seulement), jamais la clé racine.
+      S3_ACCESS_KEY: nl-api-uploader
+      S3_SECRET_KEY: ${S3_API_SECRET_KEY:?S3_API_SECRET_KEY doit être défini dans .env (R3)}
       MEDIA_QUARANTINE_BUCKET: ${MEDIA_QUARANTINE_BUCKET:-nl-media-quarantine}
       MEDIA_CLEAN_BUCKET: ${MEDIA_CLEAN_BUCKET:-nl-media-clean}
     ports:
@@ -213,6 +238,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully   # migrations, données de référence, connexion de service
+      s3-init:
+        condition: service_completed_successfully   # identités et compartiments S3
       api:
         condition: service_healthy
       clamd:
@@ -230,8 +257,9 @@ services:
       CLAMD_HOST: clamd
       CLAMD_PORT: 3310
       S3_ENDPOINT: http://s3:9000
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-nurselearn}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY doit être défini}
+      # R3 : identité S3 d'ANALYSE (lecture de la quarantaine, écriture du compartiment sain).
+      S3_ACCESS_KEY: nl-media-scanner
+      S3_SECRET_KEY: ${S3_SCANNER_SECRET_KEY:?S3_SCANNER_SECRET_KEY doit être défini dans .env (R3)}
       MEDIA_QUARANTINE_BUCKET: ${MEDIA_QUARANTINE_BUCKET:-nl-media-quarantine}
       MEDIA_CLEAN_BUCKET: ${MEDIA_CLEAN_BUCKET:-nl-media-clean}
       MEDIA_TMP_DIR: /tmp

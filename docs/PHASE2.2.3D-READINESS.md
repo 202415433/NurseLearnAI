@@ -20,7 +20,7 @@
    - des permissions minimales ;
    - la protection des fonctions et des déclencheurs ;
    - des tests de refus des opérations privilégiées.
-2. **Clés S3 séparées** :
+2. **Clés S3 séparées** — *implémentée (correctif R3, [VALIDATION-R3-S3-IDENTITIES.md](VALIDATION-R3-S3-IDENTITIES.md)) ; levée à la fusion, après la validation Windows et la CI. La diffusion devra utiliser l'identité `nl-media-reader` (lecture seule du compartiment sain), jamais une clé capable d'écrire ni la clé racine* :
    - API : écriture en quarantaine seulement ;
    - worker : lecture de la quarantaine et écriture du compartiment sain ;
    - diffusion : **lecture seule** du compartiment sain.

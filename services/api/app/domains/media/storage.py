@@ -75,6 +75,11 @@ class MediaStorage:
             self.client.head_bucket(Bucket=bucket)
         except ClientError as exc:
             code = str(exc.response.get("Error", {}).get("Code", ""))
+            # R3 : une identité restreinte (sans s3:ListBucket) reçoit 403 sur HeadBucket. Les
+            # compartiments sont alors créés par le provisionnement (`s3-init`), jamais par l'application ;
+            # l'écriture qui suit échouera proprement s'ils manquent.
+            if code in ("403", "AccessDenied", "Forbidden"):
+                return
             if code not in ("404", "NoSuchBucket", "NotFound"):
                 raise
             # Création privée : aucune ACL publique, aucune politique de compartiment.

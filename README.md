@@ -19,6 +19,7 @@ Plateforme d'apprentissage des soins infirmiers et de l'assistance aux soins —
 | 2.2.2-c — Catalogue lu depuis l'édition publiée | ✅ intégrée dans `main` (#13), CI 7/7 — [`docs/VALIDATION-PHASE2.2.2C.md`](docs/VALIDATION-PHASE2.2.2C.md) |
 | 2.2.3 — Médias et documents protégés | ✅ 2.2.3-a (migration 0007, invariants, quotas) — [`docs/VALIDATION-PHASE2.2.3A.md`](docs/VALIDATION-PHASE2.2.3A.md) · ✅ 2.2.3-b (téléversement sécurisé, quarantaine privée, PR #16) — [`docs/VALIDATION-PHASE2.2.3B.md`](docs/VALIDATION-PHASE2.2.3B.md) · ✅ 2.2.3-c (antivirus ClamAV, worker d'analyse, migration 0008, PR #17) — [`docs/VALIDATION-PHASE2.2.3C.md`](docs/VALIDATION-PHASE2.2.3C.md) · [`docs/PHASE2.2.3D-READINESS.md`](docs/PHASE2.2.3D-READINESS.md) · [`docs/PHASE2.2.3-PLAN.md`](docs/PHASE2.2.3-PLAN.md) · [ADR-0011](docs/adr/0011-medias-antivirus.md) |
 | D14 — Séparation des rôles PostgreSQL | 🧪 migration 0009 : propriétaire `nl_owner` (NOLOGIN), API en `nl_api` (ni superutilisateur ni propriétaire), migrations par le conteneur ponctuel `migrate` ; validée sous Windows (23/23, API en `nl_api`, ClamAV réel), en attente d'autorisation de push — [`docs/VALIDATION-D14-POSTGRES-ROLES.md`](docs/VALIDATION-D14-POSTGRES-ROLES.md) · condition bloquante de 2.2.3-d |
+| R3 — Séparation des identités S3 (RustFS) | 🧪 trois identités (`nl-api-uploader` : écriture en quarantaine ; `nl-media-scanner` : analyse et copie saine ; `nl-media-reader` : lecture seule, réservée à 2.2.3-d), provisionnées par le conteneur ponctuel `s3-init` ; clé racine réservée au provisionnement ; en attente de validation Windows et d'autorisation de push — [`docs/VALIDATION-R3-S3-IDENTITIES.md`](docs/VALIDATION-R3-S3-IDENTITIES.md) · condition bloquante de 2.2.3-d |
 | 2.2.3 à 2.5 | 🗓️ planifiées — [`docs/07-plan-phase-2.md`](docs/07-plan-phase-2.md) |
 | 3 à 7 | 🗓️ planifiées — voir [`docs/06-roadmap.md`](docs/06-roadmap.md) |
 
@@ -54,6 +55,7 @@ Prérequis : [Docker Desktop](https://www.docker.com/products/docker-desktop/), 
 ```powershell
 cd C:\NurseLearnAI-git               # seul dossier de travail (l'ancien C:\NurseLearnAI n'est plus utilisé)
 Copy-Item .env.example .env          # puis remplacer toutes les valeurs "change-me"
+                                     # et renseigner les secrets vides (API_DB_PASSWORD, S3_API/SCANNER/READER_SECRET_KEY…)
 docker compose -f infra/docker-compose.yml --env-file .env up -d
 .\scripts\db-apply.ps1               # crée le schéma + données de référence
 .\scripts\test-db.ps1                # tests du schéma et des migrations
@@ -76,7 +78,7 @@ docker compose stop                   # arrêt sans perte de données (ne jamais
 powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase1.2.ps1   # validation complète (52 contrôles)
 ```
 
-Interfaces locales : console S3 (RustFS) http://localhost:9001/rustfs/console/ · Mailpit http://localhost:8025
+Interfaces locales : console S3 (RustFS, clé racine — administration seulement) http://localhost:9001/rustfs/console/ · Mailpit http://localhost:8025
 
 ### Comptes et accès (Phase 2.1)
 
@@ -97,6 +99,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.3a.ps1     
 powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.3b.ps1       # étape 2.2.3-b (inclut 2.2.3-a et antérieures)
 powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.3c.ps1       # étape 2.2.3-c (ClamAV réel, profil media ; inclut 2.2.3-b et antérieures)
 powershell -ExecutionPolicy Bypass -File .\scripts\validate-d14-postgres-roles.ps1  # D14 : rôles PostgreSQL (sauvegarde préalable ; inclut 2.2.3-c et antérieures)
+powershell -ExecutionPolicy Bypass -File .\scripts\validate-r3-s3-identities.ps1  # R3 : identités S3 (inclut D14, 2.2.3-c et antérieures)
 ```
 
 Seul le rôle étudiant s'obtient par inscription. Les rôles formateur, relecteur médical et administrateur d'établissement s'obtiennent uniquement par invitation (page « Mon compte » → « Gérer les invitations ») ; un administrateur d'établissement ne peut inviter que des formateurs dans son établissement. En production, `TOKEN_HASH_KEY` (≥ 32 caractères) et `SESSION_COOKIE_SECURE=true` sont obligatoires.
