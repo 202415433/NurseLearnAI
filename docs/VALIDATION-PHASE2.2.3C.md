@@ -248,7 +248,36 @@ Les 5 échecs, et leur correction :
 4. **Collision des `conftest`** entre les tests de base et ceux de l'API dans une même exécution pytest : deux exécutions séparées.
 5. **EICAR** : contrôle dépendant du point 4.
 
-**Résultats Windows définitifs** : à compléter après le second passage.
+**Second passage Windows** (22/11/2026, commit `a51f4b1`) : **30/30 contrôles réussis, 0 échec**. La non-régression complète est sans échec (2.2.3-b 19/19, 2.2.3-a, 2.2.2-c → 1.2).
+
+- **Signatures** : freshclam a mis à jour `daily` de 28188 à 28191. clamd charge les signatures publiées le 22/11 à 06:27 UTC (**19,9 h**) : contrôle réussi.
+- **Mémoire réelle** :
+
+  | Service | Mémoire |
+  |---|---|
+  | clamd | **1 023 Mio** / 3 Go |
+  | freshclam | 36 Mio / 1 Go |
+  | worker | 61 Mio / 1 Go |
+
+- **Identité du worker** : `nl_media_scanner`, non superutilisateur, sans lecture de l'audit ni des e-mails.
+- **pytest sur PostgreSQL, Redis, RustFS et ClamAV RÉELS, aucun test ignoré** :
+  - rôle de service : **11 réussis** ;
+  - worker et téléversement : **62 réussis**, dont EICAR détecté par ClamAV réel, pannes, reprise, concurrence et doublons.
+- **Lecture seule** :
+  - `media:scan` réservée à `media_scanner` ;
+  - compte de service sans mot de passe ni session ;
+  - aucun média sain sans verdict valide ;
+  - verdict forcé refusé ;
+  - journal en ajout seul ;
+  - rôle non attribuable ;
+  - aucune route de diffusion ;
+  - compartiment sain illisible anonymement (403) ;
+  - aucune publication médicale ; pilote en brouillon ;
+  - journaux sans secret.
+
+**Remarques d'exploitation (sans effet sur la sécurité)** :
+1. freshclam ne peut pas prévenir clamd : dans l'image officielle, le socket est `/tmp/clamd.sock` et non `/run/clamav`. clamd recharge donc ses signatures à sa vérification périodique (`SelfCheck`, 10 min). Entre-temps, des signatures périmées donnent un refus sûr (`signatures_stale`), jamais `clean`. Correctif proposé : partager `/tmp` entre les deux conteneurs ClamAV, à valider.
+2. La mise à jour explicite lancée par le script échoue sur le verrou du journal de freshclam, déjà tenu par le démon. Elle est inutile quand le démon fonctionne.
 
 ## 8. Risques résiduels
 
@@ -256,7 +285,7 @@ Les 5 échecs, et leur correction :
 |---|---|---|
 | **L'API se connecte en superutilisateur PostgreSQL** (développement) : elle peut techniquement contourner toutes les gardes (`SET SESSION AUTHORIZATION`, désactivation des déclencheurs) | **Élevé avant la production** | Prérequis de 2.2.3-d et de la production : compte applicatif ordinaire, propriétaire distinct des objets. Lot dédié recommandé |
 | Une seule clé S3 pour l'API et le worker (D19, cloisonnement applicatif) | Moyen | Clés RustFS distinctes : API en écriture sur la quarantaine seulement, worker en lecture de quarantaine et écriture du compartiment sain |
-| Dépendance à la fraîcheur des signatures (miroirs ClamAV, limitation de débit) | Moyen | Échec sûr (`signatures_stale`) ; alerte d'exploitation à prévoir |
+| Dépendance à la fraîcheur des signatures (miroirs ClamAV, limitation de débit) ; rechargement de clamd différé de 10 min au plus (notification par socket inopérante) | Moyen | Échec sûr (`signatures_stale`) ; alerte d'exploitation et partage du socket à prévoir |
 | ClamAV ne détecte pas tout (PDF et MP4 non réécrits) | Moyen | Défense en profondeur 2.2.3-b + nouvelle analyse périodique (à planifier avec 2.2.3-d) |
 | Orphelins jamais supprimés | Faible | Signalés ; politique de suppression à valider explicitement |
 | Mot de passe de service dans `.env` et dans l'environnement de l'API (qui le pose) | Faible (dév.) | Gestionnaire de secrets en production |
