@@ -68,7 +68,6 @@ $PGDB = $envVars['POSTGRES_DB']; if (-not $PGDB) { $PGDB = "nurselearn" }
 $PGPW = $envVars['POSTGRES_PASSWORD']
 $S3AK = if ($envVars['S3_ACCESS_KEY']) { $envVars['S3_ACCESS_KEY'] } else { "nurselearn" }
 function Psql([string]$sql, [string]$db = $PGDB) { (docker compose exec -T postgres psql -U $PGU -d $db -X -q -At -c $sql 2>&1 | ForEach-Object { "$_" }) -join " " }
-function WorkerPy([string]$code) { (docker compose --profile media exec -T media-worker python -c $code 2>&1 | ForEach-Object { "$_" }) -join " " }
 
 # -----------------------------------------------------------------------------
 # 1. Non-régression complète (2.2.3-b → … → 1.2) — applique 0008 (démarrage de l'API)
@@ -102,16 +101,29 @@ foreach ($s in 'postgres', 'redis', 's3', 'api', 'web', 'freshclam', 'clamd', 'm
 }
 Result "services_media_operationnels" (($states.Values | Where-Object { $_ -ne "healthy" }).Count -eq 0) (($states.GetEnumerator() | Sort-Object Key | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join " ")
 
-# Signatures : chargées et de moins de 48 h (attente du rechargement après freshclam, 15 min au plus).
-$deadline = (Get-Date).AddMinutes(15)
-do {
-    $ver = WorkerPy "from app.core.config import get_settings as g; from app.workers.clamd import ClamdClient as C; from datetime import datetime, UTC; s=g(); i=C(s.clamd_host, s.clamd_port, 30).version(); print(i.engine_version, i.signature_version, i.signatures_published_at.isoformat() if i.signatures_published_at else 'none', round((datetime.now(UTC)-i.signatures_published_at).total_seconds()/3600, 1) if i.signatures_published_at else 999)"
-    $age = 999.0; if ($ver -match ' ([0-9.]+)$') { $age = [double]$Matches[1] }
-    if ($age -lt 48) { break }
-    Start-Sleep -Seconds 30
-} while ((Get-Date) -lt $deadline)
-Log "    ClamAV (moteur, signatures, publication, âge en heures) : $ver"
-Result "clamav_signatures_fraiches" ($age -lt 48) "âge=$age h"
+# Diagnostic du worker (lecture seule) : identité de service et signatures chargées par clamd.
+function SelfCheck {
+    $raw = (docker compose --profile media exec -T media-worker python -m app.workers.media_scan --self-check 2>&1 | ForEach-Object { "$_" })
+    $line = $raw | Where-Object { $_ -like '{"identity"*' } | Select-Object -Last 1
+    if ($line) { return ($line | ConvertFrom-Json) }
+    Log "    self-check illisible : $(($raw | Select-Object -Last 3) -join ' ')"
+    return $null
+}
+# Signatures : chargées et de moins de 48 h. Si elles sont périmées : journal de freshclam, mise à
+# jour explicite (freshclam), rechargement de clamd, puis nouvelle attente (15 min au plus).
+$sc = SelfCheck
+if ($sc -and -not $sc.signatures_fresh) {
+    Log "    Signatures chargées périmées ($($sc.signature_age_hours) h) : diagnostic de freshclam"
+    foreach ($l in (docker compose --profile media logs --no-color --tail 40 freshclam 2>&1 | ForEach-Object { "$_" })) { Log "      $l" }
+    Log "    >>> Mise à jour explicite des signatures (freshclam)"
+    foreach ($l in (docker compose --profile media exec -T freshclam freshclam --stdout 2>&1 | ForEach-Object { "$_" } | Select-Object -Last 15)) { Log "      $l" }
+    Log "    >>> Rechargement de clamd"
+    foreach ($l in (docker compose --profile media exec -T clamd clamdscan --reload 2>&1 | ForEach-Object { "$_" })) { Log "      $l" }
+    $deadline = (Get-Date).AddMinutes(15)
+    do { Start-Sleep -Seconds 20; $sc = SelfCheck } while ((-not $sc -or -not $sc.signatures_fresh) -and (Get-Date) -lt $deadline)
+}
+if ($sc) { Log "    ClamAV : moteur $($sc.engine_version), signatures $($sc.signature_version) publiées le $($sc.signatures_published_at) (âge $($sc.signature_age_hours) h)" }
+Result "clamav_signatures_fraiches" ($sc -and $sc.signatures_fresh) "âge=$(if ($sc) { $sc.signature_age_hours }) h"
 
 # Réseaux : clamd uniquement sur le réseau interne, aucun port publié, injoignable depuis l'API.
 $clamdId = docker compose --profile media ps -q clamd
@@ -125,8 +137,8 @@ $fcNets = (docker inspect -f "{{range `$k, `$v := .NetworkSettings.Networks}}{{`
 Result "freshclam_isole_des_services" ($fcNets -eq "nurselearn_clamav-updates") "réseaux=$fcNets"
 
 # Identité du worker : connexion de service, jamais superutilisateur, sans accès à l'audit.
-$who = WorkerPy "from app.core.config import get_settings as g; from app.workers.media_scan import MediaScanWorker as W; w=W(g()); w.store.connect(); c=w.store.conn.cursor(); c.execute(\"SELECT session_user, (SELECT rolsuper FROM pg_roles WHERE rolname=session_user), has_table_privilege('audit_logs','SELECT'), has_column_privilege('users','email','SELECT')\"); print(*c.fetchone())"
-Result "worker_identite_de_service_minimale" ($who -match "^nl_media_scanner False False False$") $who
+$id = if ($sc) { ($sc.identity | ForEach-Object { "$_" }) -join " " } else { "" }
+Result "worker_identite_de_service_minimale" ($id -eq "nl_media_scanner False False False") "session, superutilisateur, lecture audit, lecture e-mails = $id"
 
 # Mémoire réelle (après chargement des signatures).
 $stats = (docker stats --no-stream --format "{{.Name}}|{{.MemUsage}}" 2>$null | Where-Object { $_ -match "clamd|freshclam|media-worker" })
@@ -148,16 +160,18 @@ $cid = (docker create -v "${root}:/repo" -w /repo --network nurselearn_default `
     -e NL_TEST_S3_ENDPOINT=http://s3:9000 -e NL_TEST_S3_KIND=rustfs -e "S3_ACCESS_KEY=$S3AK" -e "S3_SECRET_KEY=$($envVars['S3_SECRET_KEY'])" `
     -e NL_TEST_CLAMD_HOST=clamd -e NL_TEST_CLAMD_PORT=3310 -e "NL_TEST_SCANNER_PASSWORD=$($envVars['MEDIA_SCANNER_DB_PASSWORD'])" `
     -e NL_TEST_PGHOST=postgres -e NL_TEST_PGPORT=5432 -e NL_TEST_PGUSER=$PGU -e PGPASSWORD=$PGPW -e DEBIAN_FRONTEND=noninteractive -e PYTHONDONTWRITEBYTECODE=1 `
-    python:3.12-slim sh -c "apt-get update -qq >/dev/null && apt-get install -y -qq postgresql-client >/dev/null && cd services/api && pip install -q --disable-pip-version-check --root-user-action=ignore -e '.[dev]' && alembic upgrade head && python -m app.seed && cd /repo && python -m pytest -q -rs -p no:cacheprovider database/tests/test_media_scanner_role.py services/api/tests/api/test_media_scan.py services/api/tests/api/test_media_upload.py" 2>&1).Trim()
+    python:3.12-slim sh -c "apt-get update -qq >/dev/null && apt-get install -y -qq postgresql-client >/dev/null && cd services/api && pip install -q --disable-pip-version-check --root-user-action=ignore -e '.[dev]' && alembic upgrade head && python -m app.seed && cd /repo && python -m pytest -q -rs -p no:cacheprovider database/tests/test_media_scanner_role.py && python -m pytest -q -rs -p no:cacheprovider services/api/tests/api/test_media_scan.py services/api/tests/api/test_media_upload.py" 2>&1).Trim()
 docker network connect nurselearn_media-scan $cid 2>&1 | Out-Null
 $pyOut = (docker start -a $cid 2>&1 | Out-String)
 $pyCode = [int](docker inspect -f "{{.State.ExitCode}}" $cid)
 docker rm $cid 2>&1 | Out-Null
 Psql "DROP DATABASE IF EXISTS nl_validation_scan WITH (FORCE)" "postgres" | Out-Null
 foreach ($l in ($pyOut -split "`n" | Where-Object { $_ -notmatch '^\{"ts"' } | Select-Object -Last 25)) { Log "    $l" }
-$line = ($pyOut -split "`n" | Select-String "passed|failed|error" | Select-Object -Last 1)
-Result "tests_worker_clamav_reel" ($pyCode -eq 0 -and "$line" -match "passed" -and "$line" -notmatch "skipped|failed|error") "$line"
-Result "eicar_detecte_par_clamav_reel" ($pyOut -notmatch "test_eicar_is_detected_and_never_copied FAILED" -and $pyCode -eq 0) ""
+# Deux exécutions (base, puis API : leurs conftest sont distincts) ; chacune sans échec ni test ignoré.
+$lines = @($pyOut -split "`n" | Where-Object { $_ -match '^\s*=*\s*\d+ (passed|failed|errors?)\b' })
+$okRuns = @($lines | Where-Object { "$_" -match "passed" -and "$_" -notmatch "skipped|failed|error" }).Count
+Result "tests_worker_clamav_reel" ($pyCode -eq 0 -and $okRuns -eq 2) (($lines | ForEach-Object { "$_".Trim() }) -join " | ")
+Result "eicar_detecte_par_clamav_reel" ($pyCode -eq 0 -and $pyOut -notmatch "test_eicar\w* (FAILED|SKIPPED)") ""
 
 # -----------------------------------------------------------------------------
 # 4. Contrôles en lecture seule de la base de développement

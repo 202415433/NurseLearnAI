@@ -51,7 +51,8 @@ REDIS = os.environ.get("REDIS_URL")
 
 pytestmark = pytest.mark.skipif(
     not (S3 and REDIS and (CLAMD_HOST or CLAMD_KIND == "fake")),
-    reason="NL_TEST_CLAMD_HOST, REDIS_URL ou NL_TEST_S3_ENDPOINT absent : ClamAV/Redis/S3 non disponibles",
+    # Libellé distinct de celui des tests de téléversement (que validate-phase2.2.3b.ps1 compte).
+    reason="worker d'analyse : ClamAV réel non configuré (NL_TEST_CLAMD_HOST), ou Redis ou S3 absent",
 )
 
 

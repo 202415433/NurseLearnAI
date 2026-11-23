@@ -231,7 +231,24 @@ powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.3c.ps1
    - aucune publication médicale ; pilote en brouillon ;
    - journaux du worker sans secret.
 
-**Résultats Windows** : à compléter après exécution (mémoire mesurée de clamd, nombre de tests).
+**Premier passage Windows** (22/11/2026, commit `085e2c9`) : 25 contrôles réussis sur 30.
+
+Ce qui fonctionne :
+- les 8 services sont en bonne santé ;
+- les réseaux sont isolés : clamd est interne, sans port publié et injoignable depuis l'API ; freshclam est isolé ;
+- **mémoire réelle de clamd : 947 Mio** (signatures chargées ; limite de 3 Go). Worker : 68 Mio ; freshclam : 6 Mio ;
+- migration 0008 appliquée et schéma vérifié ;
+- toutes les sondes en lecture seule passent ;
+- pytest complet : 330 réussis.
+
+Les 5 échecs, et leur correction :
+1. **Libellé de saut des tests du worker** : il contenait la phrase comptée par le contrôle 2.2.3-b. Le libellé est désormais distinct.
+2. **Signatures chargées datées du 19/11 (91,5 h)** : l'échec sûr a fonctionné comme prévu, aucun verdict `clean` n'était possible. Le script journalise maintenant freshclam, lance une mise à jour explicite et un rechargement de clamd, puis attend 15 min au plus.
+3. **Contrôle d'identité du worker** : erreur de guillemets PowerShell. Il passe désormais par la commande de diagnostic `python -m app.workers.media_scan --self-check`, sans effet.
+4. **Collision des `conftest`** entre les tests de base et ceux de l'API dans une même exécution pytest : deux exécutions séparées.
+5. **EICAR** : contrôle dépendant du point 4.
+
+**Résultats Windows définitifs** : à compléter après le second passage.
 
 ## 8. Risques résiduels
 

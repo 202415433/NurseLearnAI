@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import logging
 import os
 import shutil
@@ -528,13 +529,41 @@ def run_forever(settings: Settings) -> int:
     return 0
 
 
+def self_check(settings: Settings) -> dict[str, Any]:
+    """Diagnostic d'exploitation (lecture seule) : identité de service et état des signatures."""
+    worker = MediaScanWorker(settings)
+    out: dict[str, Any] = {}
+    worker.store.connect()
+    if worker.store.conn is None:
+        raise WorkerConfigError("connexion PostgreSQL absente")
+    with worker.store.conn.cursor() as cur:
+        cur.execute(
+            "SELECT session_user, (SELECT rolsuper FROM pg_roles WHERE rolname = session_user), "
+            "has_table_privilege('audit_logs', 'SELECT'), has_column_privilege('users', 'email', 'SELECT')"
+        )
+        row = cur.fetchone()
+    out["identity"] = list(row) if row else None
+    eng = worker.clamd.version()
+    published = eng.signatures_published_at
+    out["engine_version"], out["signature_version"] = eng.engine_version, eng.signature_version
+    out["signatures_published_at"] = published.isoformat() if published else None
+    out["signature_age_hours"] = round((datetime.now(UTC) - published).total_seconds() / 3600, 1) if published else None
+    out["signatures_fresh"] = worker._fresh(eng)
+    worker.reset()
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Worker d'analyse antivirus des médias")
     parser.add_argument("--once", action="store_true", help="une seule passe puis arrêt")
+    parser.add_argument("--self-check", action="store_true", help="diagnostic JSON (identité, signatures), sans effet")
     args = parser.parse_args(argv)
     settings = get_settings()
     configure_logging(settings.log_level)
     try:
+        if args.self_check:
+            print(json.dumps(self_check(settings)))
+            return 0
         if args.once:
             print(MediaScanWorker(settings).run_once())
             return 0
