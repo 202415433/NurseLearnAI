@@ -44,7 +44,7 @@ function NewSecret { $b = New-Object byte[] 24; [System.Security.Cryptography.Ra
 Log "NurseLearn AI — validation D14 (rôles PostgreSQL) — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_d14" ($branch -like "security-d14*" -or $branch -like "security-r3*") $branch
+Result "branche_d14" ($branch -like "security-d14*" -or $branch -like "security-r3*" -or $branch -like "phase-2.2.3[d-z]*") $branch
 $dirty = (git status --porcelain --untracked-files=no 2>$null | Where-Object { $_ -notmatch 'docs/validation-logs' }) -join " "
 Result "git_sans_modification_locale" ([string]::IsNullOrWhiteSpace($dirty)) $dirty
 $hist = (git diff --diff-filter=MD --name-only origin/main...HEAD -- database/schema 2>$null) -join " "
@@ -174,7 +174,8 @@ Result "aucun_programme_medical_publie" ($med -eq "0") "programmes médicaux pub
 $pilot = Psql "SELECT status FROM programs WHERE code = 'pab-qc-socle'"
 Result "pilote_pab_en_brouillon" ($pilot -eq "draft") $pilot
 $routes = (docker compose exec -T api python -c "from app.main import create_app; p = create_app().openapi()['paths']; print(sum(1 for k in p if k.startswith('/api/v1/editorial/media')))" 2>&1 | Out-String).Trim()
-Result "aucune_route_de_diffusion_ajoutee" ($routes -eq "3") "chemins médias=$routes"
+# 2.2.3-d : la révocation (/revoke) s'ajoute ; la diffusion est un service séparé, hors de l'API.
+Result "aucune_route_de_diffusion_ajoutee" ($routes -eq "4") "chemins médias=$routes"
 
 Log ""; Log "================ SYNTHÈSE D14 ================"
 $fail = 0

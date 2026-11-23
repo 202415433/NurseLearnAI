@@ -2,6 +2,7 @@
 
 Usage : docker compose exec -T api python - api < scripts/r3_s3_probe.py
         docker compose exec -T media-worker python - scanner < scripts/r3_s3_probe.py
+        docker compose exec -T media-delivery python - reader < scripts/r3_s3_probe.py   (2.2.3-d)
         (entrée standard : le worker a un système de fichiers en lecture seule et /tmp en tmpfs)
 Aucune opération susceptible d'altérer un compartiment existant n'est tentée (ni ACL, ni suppression de
 compartiment : couvertes par les tests sur les compartiments de test). Les opérations interdites visent
@@ -56,8 +57,21 @@ def main(role: str) -> None:
             "lister_quarantaine": lambda: c.list_objects_v2(Bucket=q, MaxKeys=1),
             "lister_sain": lambda: c.list_objects_v2(Bucket=k, MaxKeys=1),
         }
+    elif role == "reader":
+        # 2.2.3-d : identité de DIFFUSION (lecture seule du compartiment sain).
+        forbidden |= {
+            "lire_quarantaine": lambda: c.get_object(Bucket=q, Key=rnd()),
+            "lister_quarantaine": lambda: c.list_objects_v2(Bucket=q, MaxKeys=1),
+            "ecrire_quarantaine": lambda: c.put_object(Bucket=q, Key=rnd(), Body=b"sonde"),
+            "ecrire_sain": lambda: c.put_object(Bucket=k, Key=rnd(), Body=b"sonde"),
+            "supprimer_sain": lambda: c.delete_object(Bucket=k, Key=rnd()),
+            "lister_sain": lambda: c.list_objects_v2(Bucket=k, MaxKeys=1),
+            "multipartite_sain": lambda: c.create_multipart_upload(Bucket=k, Key=rnd()),
+        }
+        # Lecture permise : une clé inexistante répond 404 (et non 403).
+        allowed = {"lire_sain": lambda: c.get_object(Bucket=k, Key=rnd())}
     else:
-        raise SystemExit("rôle attendu : api | scanner")
+        raise SystemExit("rôle attendu : api | scanner | reader")
 
     unexpected, refused = [], 0
     for name, op in forbidden.items():
@@ -77,7 +91,11 @@ def main(role: str) -> None:
             op()
             allowed_ok.append(name)
         except ClientError as exc:
-            unexpected.append(f"{name}:refuse:{exc.response.get('ResponseMetadata', {}).get('HTTPStatusCode')}")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if status == 404:  # permission accordée, objet aléatoire absent
+                allowed_ok.append(name)
+            else:
+                unexpected.append(f"{name}:refuse:{status}")
     ok = not unexpected and refused == len(forbidden) and len(allowed_ok) == len(allowed)
     print(
         json.dumps(

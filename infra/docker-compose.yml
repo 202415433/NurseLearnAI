@@ -174,6 +174,69 @@ services:
     ports:
       - "127.0.0.1:${API_PORT:-28000}:8000"
 
+  media-delivery:                           # 2.2.3-d : diffusion des médias sains (processus séparé)
+    build:
+      context: ..
+      dockerfile: services/api/Dockerfile
+    restart: unless-stopped
+    # Service DISTINCT de l'API : il détient la seule identité S3 de LECTURE (nl-media-reader,
+    # compartiment sain uniquement) et aucune route d'écriture. Chaque requête, y compris chaque
+    # requête Range, est authentifiée par la session (Bearer) et autorisée à neuf ; aucune URL de
+    # stockage, aucun jeton autonome. Le navigateur passe par le serveur Web (2.2.3-e), jamais par S3.
+    command: ["uvicorn", "app.main:create_delivery_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      s3-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      # Même connexion applicative que l'API (nl_api, D14) : la valeur doit être IDENTIQUE (clé des
+      # sessions dérivée de DATABASE_URL en local ; TOKEN_HASH_KEY partagé en production).
+      DATABASE_URL: postgresql+asyncpg://nl_api:${API_DB_PASSWORD:?API_DB_PASSWORD doit être défini dans .env (D14)}@postgres:5432/${POSTGRES_DB:-nurselearn}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CORS_ORIGINS: '[]'                    # aucun appel direct depuis un navigateur
+      LOG_LEVEL: INFO
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-300}
+      TRUSTED_PROXIES: '${TRUSTED_PROXIES:-["web"]}'
+      TOKEN_HASH_KEY: ${TOKEN_HASH_KEY:-}
+      DATA_REGION: ${DATA_REGION:-local-dev}
+      SESSION_IDLE_TIMEOUT_MINUTES: ${SESSION_IDLE_TIMEOUT_MINUTES:-120}
+      SESSION_ABSOLUTE_LIFETIME_HOURS: ${SESSION_ABSOLUTE_LIFETIME_HOURS:-168}
+      SENSITIVE_IDLE_TIMEOUT_MINUTES: ${SENSITIVE_IDLE_TIMEOUT_MINUTES:-30}
+      SESSION_ROTATION_MINUTES: ${SESSION_ROTATION_MINUTES:-15}
+      S3_ENDPOINT: http://s3:9000
+      # R3 / 2.2.3-d : identité S3 de LECTURE seule ; ni téléversement, ni analyse, ni clé racine.
+      S3_ACCESS_KEY: nl-media-reader
+      S3_SECRET_KEY: ${S3_READER_SECRET_KEY:?S3_READER_SECRET_KEY doit être défini dans .env (R3)}
+      MEDIA_CLEAN_BUCKET: ${MEDIA_CLEAN_BUCKET:-nl-media-clean}
+      # Limites de diffusion (valeurs par défaut documentées dans .env.example).
+      MEDIA_DELIVERY_CONTENT_PER_MINUTE_USER: ${MEDIA_DELIVERY_CONTENT_PER_MINUTE_USER:-240}
+      MEDIA_DELIVERY_PREVIEW_PER_MINUTE_USER: ${MEDIA_DELIVERY_PREVIEW_PER_MINUTE_USER:-120}
+      MEDIA_DELIVERY_PER_MINUTE_ORG: ${MEDIA_DELIVERY_PER_MINUTE_ORG:-3000}
+      MEDIA_DELIVERY_RANGE_PER_MINUTE_MEDIA: ${MEDIA_DELIVERY_RANGE_PER_MINUTE_MEDIA:-120}
+      MEDIA_DELIVERY_BYTES_PER_MINUTE_USER: ${MEDIA_DELIVERY_BYTES_PER_MINUTE_USER:-536870912}
+      MEDIA_DELIVERY_CONCURRENT_STREAMS_USER: ${MEDIA_DELIVERY_CONCURRENT_STREAMS_USER:-4}
+      MEDIA_DELIVERY_RECHECK_SECONDS: ${MEDIA_DELIVERY_RECHECK_SECONDS:-10}
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    ports:
+      - "127.0.0.1:${MEDIA_DELIVERY_PORT:-28001}:8000"
+
   # ---------------------------------------------------------------------------------------------
   # Analyse antivirus des médias (2.2.3-c, ADR-0011) — profil « media » :
   #   docker compose --profile media up -d

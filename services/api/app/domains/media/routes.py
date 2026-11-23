@@ -433,3 +433,56 @@ async def delete_media(media_id: str, request: Request, ctx: SensitiveAuth, db: 
             db, request, ctx, "media.deleted", "media_asset", mid, row["organization_id"], deleted_reason=reason
         )
     return Response(status_code=204)
+
+
+# --------------------------------------------------------------------------------------- révocation (2.2.3-d)
+class MediaRevokeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    reason: str = Field(min_length=5, max_length=1000)
+
+
+@router.post(
+    "/{media_id}/revoke",
+    summary="Révoquer un média : diffusion coupée à la requête suivante (relecteur plateforme ou administration)",
+)
+async def revoke_media(
+    media_id: str, body: MediaRevokeIn, request: Request, ctx: SensitiveAuth, db: Db
+) -> dict[str, Any]:
+    """Passage à `revoked` (irréversible) ; la base incrémente `access_epoch` : toute requête de diffusion
+    suivante, et toute revérification d'un flux en cours, est refusée. Objet conservé, jamais diffusé ;
+    aucune purge (politique de conservation). Audit sans le motif (texte libre)."""
+    mid = parse_uuid(media_id)
+    row = await _load(db, ctx, mid)
+    if not (ctx.can("content:review", None) or ctx.can("user:manage", None)):
+        raise media_problem(
+            403, "forbidden", "Révocation réservée aux relecteurs plateforme et à l'administration", "forbidden"
+        )
+    if row["state"] == "revoked":
+        raise media_problem(409, "already_revoked", "Média déjà révoqué", "editorial-state-conflict")
+    if row["state"] == "pending_upload":
+        raise media_problem(
+            409, "transition_forbidden", "Aucun contenu reçu : abandonner le téléversement", "editorial-state-conflict"
+        )
+    async with editorial_tx(db, ctx):
+        epoch = (
+            await db.execute(
+                text(
+                    "UPDATE media_assets SET state = 'revoked', revoked_reason = :reason WHERE id = :id "
+                    "RETURNING access_epoch"
+                ),
+                {"id": mid, "reason": body.reason},
+            )
+        ).scalar()
+        await record(
+            db,
+            request,
+            ctx,
+            "media.revoked",
+            "media_asset",
+            mid,
+            row["organization_id"],
+            previous_state=row["state"],
+            access_epoch=epoch,
+        )
+    return media_out(await _load(db, ctx, mid))

@@ -35,6 +35,9 @@ Opérations réellement utilisées par le code (`app/domains/media/storage.py`) 
 | `nl-media-scanner` | `media-worker` | `S3_SCANNER_SECRET_KEY` | analyse, copie saine, réconciliation |
 | `nl-media-reader` | **aucun service** (réservée à 2.2.3-d) | `S3_READER_SECRET_KEY` | lecture future du compartiment sain |
 
+> Mise à jour 2.2.3-d : `nl-media-reader` est désormais remise au seul service `media-delivery` ([VALIDATION-PHASE2.2.3D.md](VALIDATION-PHASE2.2.3D.md)) ; la politique est inchangée.
+
+
 **Provisionnement** — `s3-init` (image de l'API, `python -m app.ops.s3_provision`), sur le modèle de `migrate` : démarre quand `s3` est sain, s'arrête avec le code 0 ; `api` et `media-worker` dépendent de sa réussite (`service_completed_successfully`). Il est idempotent :
 
 1. crée les compartiments manquants, **privés**, et échoue si un compartiment porte une politique (accès hors IAM) ;

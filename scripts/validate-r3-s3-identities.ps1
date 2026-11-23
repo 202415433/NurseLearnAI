@@ -46,7 +46,7 @@ function Json([string]$raw) { try { return (($raw -split "`n" | Where-Object { $
 Log "NurseLearn AI — validation R3 (identités S3 / RustFS) — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_r3" ($branch -like "security-r3*") $branch
+Result "branche_r3" ($branch -like "security-r3*" -or $branch -like "phase-2.2.3[d-z]*") $branch
 $dirty = (git status --porcelain --untracked-files=no 2>$null | Where-Object { $_ -notmatch 'docs/validation-logs' }) -join " "
 Result "git_sans_modification_locale" ([string]::IsNullOrWhiteSpace($dirty)) $dirty
 $hist = (git diff --diff-filter=MD --name-only origin/main...HEAD -- database/schema services/api/alembic/versions 2>$null) -join " "
@@ -140,7 +140,7 @@ Result "api_identite_televersement" ($apiAk -eq "nl-api-uploader" -and $apiSk -e
 Result "worker_identite_analyse" ($wAk -eq "nl-media-scanner" -and $wSk -eq $envVars['S3_SCANNER_SECRET_KEY']) "identité=$wAk"
 $rootSk = $envVars['S3_SECRET_KEY']
 $rootHolders = @()
-foreach ($svc in 'api', 'web', 'migrate', 'media-worker', 'clamd', 'freshclam', 'postgres', 'redis', 'mailpit') {
+foreach ($svc in 'api', 'web', 'migrate', 'media-worker', 'media-delivery', 'clamd', 'freshclam', 'postgres', 'redis', 'mailpit') {
     $cid = docker compose --profile media ps -a -q $svc 2>$null | Select-Object -First 1
     if (-not $cid) { continue }
     $envDump = (docker inspect -f "{{range .Config.Env}}{{println .}}{{end}}" $cid 2>$null | Out-String)
@@ -235,7 +235,7 @@ Result "aucun_programme_medical_publie" ($med -eq "0") "programmes médicaux pub
 $pilot = Psql "SELECT status FROM programs WHERE code = 'pab-qc-socle'"
 Result "pilote_pab_en_brouillon" ($pilot -eq "draft") $pilot
 $routes = (docker compose exec -T api python -c "from app.main import create_app; p = create_app().openapi()['paths']; print(sorted(f'{m.upper()} {k}' for k, v in p.items() if k.startswith('/api/v1/editorial/media') for m in v))" 2>&1 | Out-String).Trim()
-Result "aucune_route_de_diffusion" ($routes -eq "['DELETE /api/v1/editorial/media/{media_id}', 'GET /api/v1/editorial/media', 'GET /api/v1/editorial/media/{media_id}', 'POST /api/v1/editorial/media', 'PUT /api/v1/editorial/media/{media_id}/content']") $routes
+Result "aucune_route_de_diffusion" ($routes -eq "['DELETE /api/v1/editorial/media/{media_id}', 'GET /api/v1/editorial/media', 'GET /api/v1/editorial/media/{media_id}', 'POST /api/v1/editorial/media', 'POST /api/v1/editorial/media/{media_id}/revoke', 'PUT /api/v1/editorial/media/{media_id}/content']") $routes
 $presign = (git grep -n -E "generate_presigned|presigned_url|PublicRead|public-read" -- services apps 2>$null | Where-Object { $_ -notmatch 'tests/' }) -join " "
 Result "aucune_url_publique_ni_presignee" ([string]::IsNullOrWhiteSpace($presign)) $presign
 

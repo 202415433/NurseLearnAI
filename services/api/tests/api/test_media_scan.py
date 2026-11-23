@@ -434,7 +434,8 @@ def test_isolation_privacy_and_no_distribution(api, mw, sync_engine, worker):
     assert api.get(f"{M}/{mid}", headers=mw.other_instr.h).status_code == 404  # autre établissement
     assert api.get(f"{M}/{mid}", headers=mw.student.h).status_code in (403, 404)  # étudiant
     paths = {p for p in api.app.openapi()["paths"] if p.startswith(M)}  # type: ignore[attr-defined]
-    assert paths == {M, f"{M}/{{media_id}}", f"{M}/{{media_id}}/content"}
+    # 2.2.3-d : seule la révocation s'ajoute ; l'API d'édition ne sert toujours aucun octet.
+    assert paths == {M, f"{M}/{{media_id}}", f"{M}/{{media_id}}/content", f"{M}/{{media_id}}/revoke"}
     assert "get" not in api.app.openapi()["paths"][f"{M}/{{media_id}}/content"]  # type: ignore[attr-defined]
     r = row(sync_engine, mid)
     if REAL_S3:
