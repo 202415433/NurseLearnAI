@@ -142,7 +142,18 @@ Les deux échecs, et leur correction :
 1. **Échec pytest** : le test visait le rôle `postgres`, qui n'existe pas sous Docker (le superutilisateur y est `nurselearn`). Le test vise désormais le superutilisateur réel du cluster.
 2. **Contrôle des privilèges** : la requête par nom de table était évaluée sur des tables du catalogue système (`public.pg_statistic` inexistante). Elle passe désormais par OID, sans résolution de nom.
 
-**Second passage** : à compléter.
+**Second passage** (23/11/2026, commit `9fddea9`) : **23/23 contrôles D14 réussis, 0 échec**, après une non-régression complète sans échec (2.2.3-c 30/30 → 1.2).
+
+- **Pytest complet, application connectée en `nl_api`** : **345 réussis**, 0 échec. Les 19 tests ignorés sont ceux du worker, sans ClamAV dans cette exécution ; ils sont exécutés juste après.
+- **ClamAV réel et EICAR** : 11 + 62 tests réussis, aucun ignoré.
+- Sauvegarde préalable de 491 977 octets (76 tables de données).
+- Conteneur `migrate` terminé avec le code 0 ; `verify_head` réussi avec les contrôles D14.
+- Rôles sans privilège ; aucune appartenance ; tout le schéma appartient à `nl_owner` ; 5 fonctions `SECURITY DEFINER` verrouillées.
+- **Privilèges de l'API minimaux** : aucune table avec `TRUNCATE`, `TRIGGER` ou `REFERENCES` ; ni `CREATE`, ni `TEMP` ; ni verdicts, ni quotas, ni permissions, ni effacement d'audit, ni `clean_key`.
+- API en `nl_api` sans identifiant d'administration ; sessions en base : `nl_api` et `nl_media_scanner` seulement.
+- **Sonde dans le conteneur API : 20/20 refusées.**
+- **Aucune donnée perdue** : compteurs 34/34/…/210 avant, 37/37/…/229 après, seuls les ajouts des scripts.
+- Aucun programme médical publié ; pilote PAB en brouillon ; aucune route de diffusion ajoutée.
 
 ## 6. Processus de migration d'une installation existante et reprise
 
