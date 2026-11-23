@@ -39,7 +39,7 @@ Log "NurseLearn AI — validation étape 2.2.3-a — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
 # Accepte aussi les sous-étapes suivantes (phase-2.2.3b-…), qui enchaînent ce script en non-régression.
-Result "branche_phase_2_2_3" ($branch -like "phase-2.2.3*") $branch
+Result "branche_phase_2_2_3" ($branch -like "phase-2.2.3*" -or $branch -like "security-*") $branch
 $dirty = (git status --porcelain --untracked-files=no 2>$null | Where-Object { $_ -notmatch 'docs/validation-logs' }) -join " "
 Result "git_sans_modification_locale" ([string]::IsNullOrWhiteSpace($dirty)) $dirty
 $hist = (git diff --name-only origin/main -- database/schema/0001_core.sql database/schema/0002_pgvector.sql database/schema/0003_business_rules.sql database/schema/0004_identity.sql database/schema/0005_learning_engine.sql database/schema/0006_independent_program_versions.sql 2>$null) -join " "
@@ -72,7 +72,7 @@ if ($reg12) {
 # -----------------------------------------------------------------------------
 $rev = Psql "SELECT version_num FROM alembic_version"
 # 0007 ou une migration additive ultérieure (0008, 2.2.3-c) lorsque ce script est enchaîné.
-Result "migration_0007_en_tete" ($rev -in @("0007_secure_media_foundation", "0008_media_scanner_role")) $rev
+Result "migration_0007_en_tete" ($rev -match '^000[7-9]_') $rev
 $total = Psql "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'alembic_version'"
 Result "75_tables" ($total -eq "75") "tables=$total"
 $tables = Psql "SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('lesson_version_media','media_assets','media_scan_events','media_usage','learning_resources')"

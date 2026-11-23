@@ -43,7 +43,7 @@ function ReadEnv {
 Log "NurseLearn AI — validation étape 2.2.3-c — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_phase_2_2_3c" ($branch -like "phase-2.2.3c*") $branch
+Result "branche_phase_2_2_3c" ($branch -like "phase-2.2.3c*" -or $branch -like "security-*") $branch
 $dirty = (git status --porcelain --untracked-files=no 2>$null | Where-Object { $_ -notmatch 'docs/validation-logs' }) -join " "
 Result "git_sans_modification_locale" ([string]::IsNullOrWhiteSpace($dirty)) $dirty
 $hist = (git diff --diff-filter=MD --name-only origin/main...HEAD -- database/schema 2>$null) -join " "
@@ -85,15 +85,21 @@ if (-not $reg) {
     Result "non_regression_2_2_3b_et_anterieures" ($fails -eq 0) "$($summary.Line) — journal $($reg.Name)"
 }
 $rev = Psql "SELECT version_num FROM alembic_version"
-Result "migration_0008_appliquee" ($rev -eq "0008_media_scanner_role") $rev
+Result "migration_0008_appliquee" ($rev -match '^000[89]_') $rev
 $verify = (docker compose exec -T postgres psql -U $PGU -d $PGDB -X -q -v ON_ERROR_STOP=1 -f /database/checks/verify_head.sql 2>&1 | Out-String)
 Result "schema_tete_verifie" ($verify -match "OK : 75 tables") (($verify -split "`n" | Select-String "OK|ERR") -join " ")
 
 # -----------------------------------------------------------------------------
 # 2. Profil « media » : freshclam, clamd, worker
 # -----------------------------------------------------------------------------
-Log ""; Log ">>> docker compose --profile media up -d --build --wait (premier démarrage : chargement des signatures)"
-$out = (docker compose --profile media up -d --build --wait --wait-timeout 1500 2>&1 | Out-String)
+Log ""; Log ">>> docker compose --profile media up -d --build (premier démarrage : chargement des signatures)"
+$out = (docker compose --profile media up -d --build 2>&1 | Out-String)
+# Attente explicite (25 min au plus) : `up --wait` échoue quand le conteneur ponctuel `migrate` (D14) se termine.
+$deadline = (Get-Date).AddMinutes(25)
+do {
+    Start-Sleep -Seconds 10
+    $pending = @(foreach ($s in 'postgres', 'redis', 's3', 'api', 'web', 'freshclam', 'clamd', 'media-worker') { $h = docker inspect -f "{{.State.Health.Status}}" (docker compose --profile media ps -q $s) 2>$null; if ($h -ne "healthy") { $s } })
+} while ($pending.Count -gt 0 -and (Get-Date) -lt $deadline)
 Log (($out -split "`n" | Select-Object -Last 8) -join "`n")
 $states = @{}
 foreach ($s in 'postgres', 'redis', 's3', 'api', 'web', 'freshclam', 'clamd', 'media-worker') {
@@ -159,8 +165,9 @@ $cid = (docker create -v "${root}:/repo" -w /repo --network nurselearn_default `
     -e "REDIS_URL=redis://:$($envVars['REDIS_PASSWORD'])@redis:6379/0" `
     -e NL_TEST_S3_ENDPOINT=http://s3:9000 -e NL_TEST_S3_KIND=rustfs -e "S3_ACCESS_KEY=$S3AK" -e "S3_SECRET_KEY=$($envVars['S3_SECRET_KEY'])" `
     -e NL_TEST_CLAMD_HOST=clamd -e NL_TEST_CLAMD_PORT=3310 -e "NL_TEST_SCANNER_PASSWORD=$($envVars['MEDIA_SCANNER_DB_PASSWORD'])" `
+    -e "API_DB_PASSWORD=$($envVars['API_DB_PASSWORD'])" -e "NL_TEST_API_PASSWORD=$($envVars['API_DB_PASSWORD'])" -e "NL_TEST_ADMIN_DATABASE_URL=postgresql+psycopg://${PGU}:${PGPW}@postgres:5432/nl_validation_scan" `
     -e NL_TEST_PGHOST=postgres -e NL_TEST_PGPORT=5432 -e NL_TEST_PGUSER=$PGU -e PGPASSWORD=$PGPW -e DEBIAN_FRONTEND=noninteractive -e PYTHONDONTWRITEBYTECODE=1 `
-    python:3.12-slim sh -c "apt-get update -qq >/dev/null && apt-get install -y -qq postgresql-client >/dev/null && cd services/api && pip install -q --disable-pip-version-check --root-user-action=ignore -e '.[dev]' && alembic upgrade head && python -m app.seed && cd /repo && python -m pytest -q -rs -p no:cacheprovider database/tests/test_media_scanner_role.py && python -m pytest -q -rs -p no:cacheprovider services/api/tests/api/test_media_scan.py services/api/tests/api/test_media_upload.py" 2>&1).Trim()
+    python:3.12-slim sh -c "apt-get update -qq >/dev/null && apt-get install -y -qq postgresql-client >/dev/null && cd services/api && pip install -q --disable-pip-version-check --root-user-action=ignore -e '.[dev]' && alembic upgrade head && python -m app.seed && cd /repo && python -m pytest -q -rs -p no:cacheprovider database/tests/test_media_scanner_role.py && DATABASE_URL=postgresql+asyncpg://nl_api:$($envVars['API_DB_PASSWORD'])@postgres:5432/nl_validation_scan python -m pytest -q -rs -p no:cacheprovider services/api/tests/api/test_media_scan.py services/api/tests/api/test_media_upload.py" 2>&1).Trim()
 docker network connect nurselearn_media-scan $cid 2>&1 | Out-Null
 $pyOut = (docker start -a $cid 2>&1 | Out-String)
 $pyCode = [int](docker inspect -f "{{.State.ExitCode}}" $cid)

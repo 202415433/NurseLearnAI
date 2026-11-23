@@ -15,7 +15,7 @@
 
 ## 2. Prérequis bloquants avant toute diffusion
 
-1. **D14 — CONDITION BLOQUANTE : l'API ne doit plus se connecter à PostgreSQL en superutilisateur ni en propriétaire privilégié du schéma.** Sans cela, les gardes de base restent contournables par l'API. Proposition détaillée : [PROPOSAL-D14-POSTGRES-ROLES.md](PROPOSAL-D14-POSTGRES-ROLES.md). Elle prévoit :
+1. **D14 — CONDITION BLOQUANTE : l'API ne doit plus se connecter à PostgreSQL en superutilisateur ni en propriétaire privilégié du schéma.** *Implémentée (migration 0009, [VALIDATION-D14-POSTGRES-ROLES.md](VALIDATION-D14-POSTGRES-ROLES.md)) ; levée à la fusion, après la validation Windows et la CI.* Sans cela, les gardes de base restent contournables par l'API. Proposition détaillée : [PROPOSAL-D14-POSTGRES-ROLES.md](PROPOSAL-D14-POSTGRES-ROLES.md). Elle prévoit :
    - les rôles `nl_owner`, `nl_migrator`, `nl_api` et `nl_media_scanner` ;
    - des permissions minimales ;
    - la protection des fonctions et des déclencheurs ;

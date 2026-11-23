@@ -78,7 +78,7 @@ Log "NurseLearn AI — validation Phase 1.2 — $(Get-Date -Format o)"
 Log "Machine : $env:COMPUTERNAME — dossier $root — Git : $(git branch --show-current 2>$null) @ $(git rev-parse --short HEAD 2>$null)"
 # Branche phase-1.2 ou ultérieure (le script sert aussi de non-régression aux phases suivantes).
 $branch = git branch --show-current 2>$null
-Result "branche_phase_1_2_ou_suivante" ($branch -eq "phase-1.2" -or $branch -eq "main" -or $branch -like "phase-2*") "$branch"
+Result "branche_phase_1_2_ou_suivante" ($branch -eq "phase-1.2" -or $branch -eq "main" -or $branch -like "phase-2*" -or $branch -like "security-*") "$branch"
 
 # -----------------------------------------------------------------------------
 # 1. Démarrage avec la commande cible
@@ -212,14 +212,18 @@ Psql "postgres" "DROP DATABASE IF EXISTS nl_validation_api WITH (FORCE)" | Out-N
 Psql "postgres" "CREATE DATABASE nl_validation_api" | Out-Null
 # Médias (2.2.3-b) : les tests de téléversement utilisent le RustFS réel de la pile (compartiments de test dédiés).
 $S3AK = if ($envVars['S3_ACCESS_KEY']) { $envVars['S3_ACCESS_KEY'] } else { "nurselearn" }
+# D14 : l'application testée se connecte en nl_api (mot de passe de .env, inchangé) ; les migrations,
+# les données de référence et les fixtures utilisent la connexion d'administration.
+$APIPW = $envVars['API_DB_PASSWORD']
 $r = Run "pytest : base, migrations, API, unitaires (bases jetables)" {
     docker run --rm --network $net -v "${root}:/repo" -w /repo `
         -e "DATABASE_URL=postgresql+asyncpg://${PGU}:${PGPW}@postgres:5432/nl_validation_api" `
         -e "REDIS_URL=redis://:$($envVars['REDIS_PASSWORD'])@redis:6379/0" `
         -e NL_TEST_S3_ENDPOINT=http://s3:9000 -e NL_TEST_S3_KIND=rustfs -e "S3_ACCESS_KEY=$S3AK" -e "S3_SECRET_KEY=$($envVars['S3_SECRET_KEY'])" `
         -e "NL_TEST_SCANNER_PASSWORD=$($envVars['MEDIA_SCANNER_DB_PASSWORD'])" `
+        -e "API_DB_PASSWORD=$APIPW" -e "NL_TEST_API_PASSWORD=$APIPW" -e "NL_TEST_ADMIN_DATABASE_URL=postgresql+psycopg://${PGU}:${PGPW}@postgres:5432/nl_validation_api" `
         -e DEBIAN_FRONTEND=noninteractive -e MAILPIT_URL=http://mailpit:8025 -e SMTP_HOST=mailpit -e SMTP_PORT=1025 -e NL_TEST_PGHOST=postgres -e NL_TEST_PGPORT=5432 -e NL_TEST_PGUSER=$PGU -e PGPASSWORD=$PGPW -e PYTHONDONTWRITEBYTECODE=1 `
-        python:3.12-slim sh -c "apt-get update -qq >/dev/null && apt-get install -y -qq postgresql-client >/dev/null && cd services/api && pip install -q --disable-pip-version-check --root-user-action=ignore -e '.[dev]' && alembic upgrade head && python -m app.seed && cd /repo && python -m pytest -q -rs -p no:cacheprovider database/tests services/api/tests"
+        python:3.12-slim sh -c "apt-get update -qq >/dev/null && apt-get install -y -qq postgresql-client >/dev/null && cd services/api && pip install -q --disable-pip-version-check --root-user-action=ignore -e '.[dev]' && alembic upgrade head && python -m app.seed && cd /repo && DATABASE_URL=postgresql+asyncpg://nl_api:${APIPW}@postgres:5432/nl_validation_api python -m pytest -q -rs -p no:cacheprovider database/tests services/api/tests"
 }
 Result "pytest_complet" ($r.Code -eq 0) (($r.Out -split "`n" | Select-String "passed|failed|error") -join " ")
 Psql "postgres" "DROP DATABASE IF EXISTS nl_validation_api WITH (FORCE)" | Out-Null
@@ -235,7 +239,7 @@ Result "web_tests_vitest_playwright_axe" ($r.Code -eq 0) (($r.Out -split "`n" | 
 # -----------------------------------------------------------------------------
 $logs = (docker compose logs --no-color 2>&1 | Out-String)
 $leaks = 0
-foreach ($k in 'POSTGRES_PASSWORD','REDIS_PASSWORD','S3_SECRET_KEY','JWT_SIGNING_KEY','TOKEN_HASH_KEY','MEDIA_SCANNER_DB_PASSWORD') { $v = $envVars[$k]; if ($v -and $logs.Contains($v)) { $leaks++ } }
+foreach ($k in 'POSTGRES_PASSWORD','REDIS_PASSWORD','S3_SECRET_KEY','JWT_SIGNING_KEY','TOKEN_HASH_KEY','MEDIA_SCANNER_DB_PASSWORD','API_DB_PASSWORD') { $v = $envVars[$k]; if ($v -and $logs.Contains($v)) { $leaks++ } }
 Result "aucun_secret_dans_les_journaux" (($leaks -eq 0) -and ($logs.Length -gt 1024)) "($leaks fuite(s), $([int]($logs.Length/1024)) Ko)"
 
 Log ""; Log "================ SYNTHÈSE ================"
