@@ -351,8 +351,8 @@ jobs:
           # R3 : identités S3 provisionnées et vérifiées ; l'API n'a que l'écriture en quarantaine.
           test "$(docker compose ps -a s3-init --format '{{.ExitCode}}')" = "0"
           docker compose run --rm --no-deps -T s3-init python -m app.ops.s3_provision --check
-          docker compose cp scripts/r3_s3_probe.py api:/tmp/r3_s3_probe.py
-          docker compose exec -T api python /tmp/r3_s3_probe.py api
+          # Sonde par l'entrée standard (le worker a un système de fichiers en lecture seule, /tmp en tmpfs).
+          docker compose exec -T api python - api < scripts/r3_s3_probe.py
           docker compose exec -T postgres psql -U nurselearn -d nurselearn -v ON_ERROR_STOP=1 -q -f /database/checks/verify_head.sql
           test "$(docker compose exec -T postgres psql -U nurselearn -d nurselearn -Atc "SELECT count(*) FROM pg_stat_activity WHERE usename = 'nl_api'")" -ge 1
           docker compose exec -T api python /dev/stdin <<'PY'
@@ -390,8 +390,7 @@ jobs:
           ! (exec 3<>/dev/tcp/127.0.0.1/3310) 2>/dev/null
           ! docker compose exec -T api python -c "import socket; socket.create_connection(('clamd', 3310), timeout=3)" 2>/dev/null
           # R3 : le worker lit la quarantaine et écrit le compartiment sain, sans aucun droit d'administration.
-          docker compose cp scripts/r3_s3_probe.py media-worker:/tmp/r3_s3_probe.py
-          docker compose exec -T media-worker python /tmp/r3_s3_probe.py scanner
+          docker compose exec -T media-worker python - scanner < scripts/r3_s3_probe.py
           docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' | grep -E 'clamd|freshclam|media-worker'
       - name: Persistance après redémarrage de PostgreSQL
         run: |
@@ -403,7 +402,8 @@ jobs:
           docker compose restart s3
           for i in $(seq 1 30); do [ "$(docker compose ps s3 --format '{{.Health}}')" = "healthy" ] && break; sleep 2; done
           docker compose run --rm --no-deps -T s3-init python -m app.ops.s3_provision --check
-          docker compose exec -T api python /tmp/r3_s3_probe.py api
+          docker compose exec -T api python - api < scripts/r3_s3_probe.py
+          docker compose exec -T media-worker python - scanner < scripts/r3_s3_probe.py
       - name: Journaux en cas d'échec
         if: failure()
         run: docker compose logs --tail 100

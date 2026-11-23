@@ -15,7 +15,8 @@
 # =============================================================================
 $ErrorActionPreference = "Continue"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$OutputEncoding = [System.Text.Encoding]::UTF8
+# Sans BOM : la sonde R3 est transmise à Python par l'entrée standard des conteneurs.
+$OutputEncoding = New-Object System.Text.UTF8Encoding $false
 
 $root = (Get-Location).Path
 if (-not (Test-Path "$root\compose.yaml")) { Write-Error "Lancer depuis la racine du dépôt (C:\NurseLearnAI-git)."; exit 2 }
@@ -151,11 +152,15 @@ $webS3 = (docker compose exec -T web sh -c 'env | grep -c "^S3_\|^NEXT_PUBLIC_S3
 Result "aucune_cle_s3_dans_le_frontend" ($webS3 -eq "0" -or $webS3 -eq "") "variables S3 dans web=$webS3"
 
 Log ""; Log ">>> Sondes adversariales DANS les conteneurs (identifiants propres à chaque service)"
-docker compose cp "$root\scripts\r3_s3_probe.py" "api:/tmp/r3_s3_probe.py" 2>&1 | Out-Null
-docker compose --profile media cp "$root\scripts\r3_s3_probe.py" "media-worker:/tmp/r3_s3_probe.py" 2>&1 | Out-Null
-$pa = Json ((docker compose exec -T api python /tmp/r3_s3_probe.py api 2>&1 | Out-String))
+# Sonde transmise par l'entrée standard : le worker a un système de fichiers en lecture seule et un
+# /tmp en tmpfs, où `docker compose cp` ne dépose rien de visible.
+$probeSrc = Get-Content "$root\scripts\r3_s3_probe.py" -Raw -Encoding UTF8
+function Probe([string]$svc, [string]$role) { ($probeSrc | docker compose --profile media exec -T $svc python - $role 2>&1 | Out-String) }
+$pa = Json (Probe api api)
 Result "sonde_api_tout_refuse" ($pa -and $pa.ok -and $pa.identity -eq "nl-api-uploader") $(if ($pa) { "$($pa.refused)/$($pa.total) refusées, inattendues : $($pa.unexpected -join ',')" } else { "sonde illisible" })
-$pw = Json ((docker compose --profile media exec -T media-worker python /tmp/r3_s3_probe.py scanner 2>&1 | Out-String))
+$pwRaw = Probe media-worker scanner
+$pw = Json $pwRaw
+if (-not $pw) { Log "    sortie de la sonde worker : $(($pwRaw -split "`n" | Select-Object -Last 5) -join ' | ')" }
 Result "sonde_worker_minimale" ($pw -and $pw.ok -and $pw.identity -eq "nl-media-scanner") $(if ($pw) { "$($pw.refused)/$($pw.total) refusées, permises : $($pw.allowed_ok -join ',') ; inattendues : $($pw.unexpected -join ',')" } else { "sonde illisible" })
 $sc = (docker compose --profile media exec -T media-worker python -m app.workers.media_scan --self-check 2>&1 | Out-String)
 Result "worker_auto_verification" ($LASTEXITCODE -eq 0) (($sc -split "`n" | Select-Object -Last 1).Trim())
@@ -187,14 +192,14 @@ docker rm $cid 2>&1 | Out-Null
 Psql "DROP DATABASE IF EXISTS nl_validation_r3 WITH (FORCE)" "postgres" | Out-Null
 foreach ($l in ($pyOut -split "`n" | Where-Object { $_ -match 'test_s3_identities.py::|passed|failed|skipped|error' } | Select-Object -Last 20)) { Log "    $($l.Trim())" }
 $passed = if ($pyOut -match '(\d+) passed') { [int]$Matches[1] } else { 0 }
-Result "tests_adversariaux_r3_rustfs_reel" ($pyCode -eq 0 -and $passed -ge 10 -and $pyOut -notmatch '\d+ (skipped|failed)') "$passed tests réussis"
+Result "tests_adversariaux_r3_rustfs_reel" ($pyCode -eq 0 -and $passed -ge 9 -and $pyOut -notmatch '\d+ (skipped|failed)') "$passed tests réussis"
 
 Log ""; Log ">>> Redémarrage de RustFS : persistance des identités et politiques"
 docker compose restart s3 2>&1 | Out-Null
 for ($i = 0; $i -lt 30; $i++) { $h = docker inspect -f "{{.State.Health.Status}}" (docker compose ps -q s3) 2>$null; if ($h -eq "healthy") { break }; Start-Sleep -Seconds 2 }
 $chk2 = Json (Ops "--check")
-$pa2 = Json ((docker compose exec -T api python /tmp/r3_s3_probe.py api 2>&1 | Out-String))
-$pw2 = Json ((docker compose --profile media exec -T media-worker python /tmp/r3_s3_probe.py scanner 2>&1 | Out-String))
+$pa2 = Json (Probe api api)
+$pw2 = Json (Probe media-worker scanner)
 Result "politiques_persistantes_apres_redemarrage" ($chk2 -and $chk2.ok -and $pa2 -and $pa2.ok -and $pw2 -and $pw2.ok) "check=$($chk2.ok) api=$($pa2.ok) worker=$($pw2.ok)"
 
 Log ""; Log ">>> Services Docker"

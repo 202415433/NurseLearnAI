@@ -1,7 +1,8 @@
 """Sonde R3 exécutée DANS un conteneur applicatif, avec SES identifiants S3 (aucune clé fournie à la sonde).
 
-Usage : docker compose cp scripts/r3_s3_probe.py api:/tmp/ && docker compose exec -T api python /tmp/r3_s3_probe.py api
-        (idem avec media-worker … scanner)
+Usage : docker compose exec -T api python - api < scripts/r3_s3_probe.py
+        docker compose exec -T media-worker python - scanner < scripts/r3_s3_probe.py
+        (entrée standard : le worker a un système de fichiers en lecture seule et /tmp en tmpfs)
 Aucune opération susceptible d'altérer un compartiment existant n'est tentée (ni ACL, ni suppression de
 compartiment : couvertes par les tests sur les compartiments de test). Les opérations interdites visent
 des clés ALÉATOIRES inexistantes : un refus renvoie 403, une permission
