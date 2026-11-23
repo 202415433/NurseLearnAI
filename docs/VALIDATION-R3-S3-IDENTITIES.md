@@ -156,17 +156,38 @@ Clé racine : changer `S3_SECRET_KEY`, recréer `s3` puis relancer `s3-init`. Le
 - **Worker** : seul à transformer un objet de quarantaine en média sain (après empreinte et ClamAV) ; PostgreSQL reste la source de vérité (`nl_media_scanner`, D14).
 - **Lecture (2.2.3-d)** : lecture seule du compartiment sain, derrière une route authentifiée à concevoir ; aucune écriture possible.
 
+## 9 bis. Audit final des permissions (vérifié sur RustFS réel)
+
+| Identité | Exigence | Preuve |
+|---|---|---|
+| API `nl-api-uploader` | écrit dans la quarantaine | tests 1 et chaîne applicative ; sonde API |
+| | ne lit ni ne modifie le compartiment sain | tests 2–4, compromission de l'API ; sonde API (9/9 refus) |
+| | n'administre pas RustFS | test 12 (`add-user`, `add-canned-policy`, rattachement `consoleAdmin`) ; sonde (création de compartiment, politique) |
+| Worker `nl-media-scanner` | lit la quarantaine | test 5 ; sonde worker (listage permis) ; ClamAV/EICAR réels |
+| | écrit les médias validés | test 6 (écriture + `HeadObject` de l'empreinte) ; chaîne applicative |
+| | n'administre pas RustFS | tests 7 et 12 ; sonde worker (5/5 refus) |
+| | suppression : **uniquement dans le compartiment sain** (retrait de sa propre copie non enregistrée en base, `delete_own_clean_copy_sync`) ; aucune suppression ni écriture en quarantaine | test 5 (`DeleteObject`/`PutObject` quarantaine → 403) ; risque R3-2 |
+| Lecture `nl-media-reader` | lit uniquement le compartiment sain | test 8 |
+| | ne lit pas la quarantaine | test 9 |
+| | n'écrit ni ne supprime, ne liste pas | test 10 |
+| | n'est utilisée par aucun service | Compose : secret remis à `s3-init` seulement (contrôle CI et `cle_racine_reservee_a_s3_et_s3_init`) |
+| Clé racine | réservée au serveur `s3` et à `s3-init` | CI (`config --format json`) ; Windows : aucun autre conteneur ne la porte |
+| | jamais accessible aux processus API ou worker | `api_identite_televersement`, `worker_identite_analyse` (identités et secrets propres comparés) |
+
 ## 10. Risques résiduels
+
+R3-1 à R3-4 sont acceptés pour ce correctif et ne sont pas traités ici ; les autres lignes du tableau sont des constats complémentaires.
+
 
 | Risque | Portée | Atténuation |
 |---|---|---|
-| L'API peut supprimer ou remplacer **n'importe quel** objet de quarantaine (l'IAM S3 ne distingue pas « ses » objets) | Déni de service sur les médias en attente | Remplacement détecté par le worker (taille et SHA-256 comparés à la base → `integrity_mismatch`, jamais validé) ; suppression → `object_missing` ; aucun effet sur le compartiment sain |
-| Le worker peut écrire ou supprimer dans le compartiment sain | Un worker compromis pourrait altérer des médias validés | Identité distincte, réseau `media-scan` interne, connexion PostgreSQL `nl_media_scanner` ; à réduire par versionnement ou verrouillage d'objets (WORM) avant la production |
-| La clé racine reste dans `.env` en développement | Poste de développement compromis | Production : secret géré (coffre), remis uniquement au provisionnement, console désactivée ou isolée |
+| **R3-1** — L'API peut supprimer ou remplacer **n'importe quel** objet de quarantaine (l'IAM S3 ne distingue pas « ses » objets) | Déni de service sur les médias en attente | Remplacement détecté par le worker (taille et SHA-256 comparés à la base → `integrity_mismatch`, jamais validé) ; suppression → `object_missing` ; aucun effet sur le compartiment sain |
+| **R3-2** — Le worker peut modifier ou supprimer des objets sains | Un worker compromis pourrait altérer des médias validés | Identité distincte, réseau `media-scan` interne, connexion PostgreSQL `nl_media_scanner` ; à réduire par versionnement ou verrouillage d'objets (WORM) avant la production |
+| **R3-3** — La clé racine est présente dans l'environnement local de développement (`.env`) | Poste de développement compromis | Production : secret géré (coffre), remis uniquement au provisionnement, console désactivée ou isolée |
 | Console RustFS active (`127.0.0.1:9001`) | Locale uniquement | Désactiver en production (`RUSTFS_CONSOLE_ENABLE=false`) |
 | `nl-media-reader` provisionnée mais inutilisée | Aucune (secret remis à aucun service) | Utilisée seulement par 2.2.3-d, après autorisation |
 | Journaux d'accès S3 non centralisés | Enquête plus difficile | À prévoir avec l'observabilité (phase ultérieure) |
-| Le format des réponses d'administration (`user-info`) dépend de la version de RustFS (`rustfs/rustfs:1.0.0` épinglée) | Une mise à jour pourrait faire échouer `--check` | Image épinglée ; `--check` bloque le démarrage plutôt que de laisser passer |
+| **R3-4** — La compatibilité des politiques et de l'API d'administration doit être revérifiée à chaque mise à jour de RustFS (`rustfs/rustfs:1.0.0` épinglée) | Une mise à jour pourrait changer l'évaluation IAM ou le format de `user-info` | Image épinglée ; `--check` bloque le démarrage ; relancer `test_s3_identities.py` et `validate-r3-s3-identities.ps1` avant toute montée de version |
 
 ## 11. Conditions de production
 
