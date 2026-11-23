@@ -124,6 +124,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\validate-r3-s3-identities.ps1
 
 Le script ajoute à `.env` les trois secrets s'ils manquent (valeurs aléatoires, jamais affichées), fait l'inventaire (volumes, base, objets S3), lance la non-régression complète puis les contrôles R3, redémarre RustFS pour vérifier la persistance et compare l'inventaire final. Il ne supprime aucun volume ni aucune donnée. Journal : `docs\validation-logs\r3-<date>.log`.
 
+### Résultat (2026-11-23, journal `r3-20261123-131056.log`)
+
+**32/32 contrôles R3, 0 échec**, sur `0ea68a3` :
+- non-régression : D14 23/23 ; 2.2.3-c 30/30 (ClamAV et EICAR réels) ; pytest complet 354 réussis, API en `nl_api` ;
+- `s3-init` terminé avec le code 0 ; trois identités actives, chacune avec sa seule politique ;
+- clé racine détenue par `s3` et `s3-init` seulement ; aucune variable S3 dans `web` ;
+- sonde API : 9/9 opérations interdites refusées ; sonde worker : 5/5 refusées, listage des deux compartiments permis ;
+- accès anonyme : 403 (GET, PUT, DELETE) sur les deux compartiments ;
+- `test_s3_identities.py` : 9/9 réussis sur le RustFS de la pile ;
+- après redémarrage de RustFS : `--check`, sonde API et sonde worker toujours conformes ;
+- 8/8 services sains ; aucun secret dans les journaux ; aucun volume, aucune donnée ni aucun objet perdu ; aucune publication médicale, pilote PAB en brouillon, aucune route de diffusion.
+
+Première exécution (`5997fc0`, 29/32) : sonde du worker copiée par `docker compose cp` dans un `/tmp` en tmpfs (système de fichiers en lecture seule), donc invisible, et seuil de 10 tests au lieu de 9. Corrigé dans `0ea68a3` (sonde par l'entrée standard) ; aucun de ces échecs ne concernait une permission.
+
 ## 8. Rotation des clés
 
 Identités de service (sans interruption notable) :
