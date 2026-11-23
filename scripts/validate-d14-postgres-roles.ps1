@@ -44,7 +44,7 @@ function NewSecret { $b = New-Object byte[] 24; [System.Security.Cryptography.Ra
 Log "NurseLearn AI — validation D14 (rôles PostgreSQL) — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_d14" ($branch -like "security-d14*") $branch
+Result "branche_d14" ($branch -like "security-d14*" -or $branch -like "security-r3*") $branch
 $dirty = (git status --porcelain --untracked-files=no 2>$null | Where-Object { $_ -notmatch 'docs/validation-logs' }) -join " "
 Result "git_sans_modification_locale" ([string]::IsNullOrWhiteSpace($dirty)) $dirty
 $hist = (git diff --diff-filter=MD --name-only origin/main...HEAD -- database/schema 2>$null) -join " "
@@ -61,6 +61,19 @@ foreach ($k in 'API_DB_PASSWORD', 'MEDIA_SCANNER_DB_PASSWORD') {
             (Get-Content "$root\.env") -replace "^\s*$k=.*", "$k=$(NewSecret)" | Set-Content "$root\.env" -Encoding ASCII
         } else {
             Add-Content -Path "$root\.env" -Value "`r`n$k=$(NewSecret)" -Encoding ASCII
+        }
+        Log "    $k absent de .env : valeur aléatoire ajoutée (non affichée)."
+        $envVars = ReadEnv
+    }
+}
+# R3 : identités S3 par service (32 caractères hexadécimaux : limite S3 de 40), requises par Compose.
+foreach ($k in 'S3_API_SECRET_KEY', 'S3_SCANNER_SECRET_KEY', 'S3_READER_SECRET_KEY') {
+    if (-not $envVars[$k]) {
+        $v = (NewSecret).Substring(0, 32)
+        if ((Get-Content "$root\.env") -match "^\s*$k=") {
+            (Get-Content "$root\.env") -replace "^\s*$k=.*", "$k=$v" | Set-Content "$root\.env" -Encoding ASCII
+        } else {
+            Add-Content -Path "$root\.env" -Value "`r`n$k=$v" -Encoding ASCII
         }
         Log "    $k absent de .env : valeur aléatoire ajoutée (non affichée)."
         $envVars = ReadEnv
