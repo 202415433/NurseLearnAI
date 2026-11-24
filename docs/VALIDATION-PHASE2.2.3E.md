@@ -84,4 +84,22 @@ git switch phase-2.2.3e-media-management-ui
 powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.3e.ps1 -Stage e1
 ```
 
-*Résultat Windows du point de contrôle E1 : à compléter.*
+**Premier passage Windows (2026-11-24, `3d9a9ef`) : 21/32, 11 échecs — bloquant, E2 non commencé.**
+
+| Contrôles | Résultat | Cause |
+|---|---|---|
+| 0010, privilèges, permission admin seulement | PASS | — |
+| FreshClam → clamd (socket, notification, rechargement 28193 = disque, redémarrages, FreshClam arrêté) | PASS (6/6) | Premier essai réel du correctif : concluant |
+| Intégrité (volumes, données, objets S3, pilote en brouillon, aucune publication) | PASS | — |
+| Non-régression 1.2 → 2.2.2-c (`migrations_a_jour`, `migration_0004…0006`) | FAIL | Scripts antérieurs n'acceptant que `000x` comme révision de tête ; 0010 refusée. Défaut du script, pas du produit. |
+| D14 `security_definer_verrouillees` | FAIL | Inventaire exact non mis à jour pour les trois fonctions de 0010. Valeurs observées toutes `false/true` (PUBLIC sans EXECUTE, `search_path` fixé) : les fonctions sont bien verrouillées. |
+| 10 contrôles pytest | FAIL (0 test) | Les suites `database/tests` et `services/api/tests` importent chacune leur `conftest` ; collectées dans un seul processus, pytest s'interrompt (code 2). |
+
+Correctif (commit séparé, périmètre E1, aucune exigence affaiblie) :
+- révisions de tête acceptées `000x` **ou** `00[1-9][0-9]` dans les six scripts antérieurs ;
+- inventaire D14 exact : celui de 0009 seul, ou celui de 0010 (8 fonctions, toutes `false/true`) lorsque la tête est 0010 ou ultérieure ;
+- pytest en deux processus (base depuis la racine, API depuis `services/api`), codes de sortie combinés, et 30 dernières lignes journalisées (secrets masqués) si aucun test n'est collecté.
+
+Vérification locale du correctif : base 60/60, API 91 réussis + 1 ignoré (ClamAV réel absent du conteneur).
+
+*Second passage Windows : à compléter.*

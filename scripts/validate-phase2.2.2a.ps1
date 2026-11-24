@@ -68,7 +68,7 @@ if ($reg12) {
 # 2. Contrôles de l'étape 2.2.2-a (base de développement)
 # -----------------------------------------------------------------------------
 $rev = Psql "SELECT version_num FROM alembic_version"
-Result "migration_0006_ou_ulterieure" ($rev -match '^000[6-9]_') $rev
+Result "migration_0006_ou_ulterieure" ($rev -match '^(000[6-9]|00[1-9][0-9])_') $rev
 $tables = Psql "SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_name IN ('module_versions','module_version_lessons','module_version_lesson_versions','program_release_modules','program_release_prerequisites')"
 Result "cinq_nouvelles_tables" ($tables -eq "module_version_lesson_versions,module_version_lessons,module_versions,program_release_modules,program_release_prerequisites") $tables
 # Même périmètre que verify_head.sql : tables du modèle, hors table technique alembic_version.

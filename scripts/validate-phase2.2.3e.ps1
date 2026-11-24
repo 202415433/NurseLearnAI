@@ -195,7 +195,7 @@ $cid = (docker create -v "${root}:/repo" -w /repo --network nurselearn_default `
     -e NL_TEST_CLAMD_HOST=clamd -e NL_TEST_CLAMD_PORT=3310 -e "NL_TEST_SCANNER_PASSWORD=$($envVars['MEDIA_SCANNER_DB_PASSWORD'])" `
     -e "API_DB_PASSWORD=$($envVars['API_DB_PASSWORD'])" -e "NL_TEST_API_PASSWORD=$($envVars['API_DB_PASSWORD'])" -e "NL_TEST_ADMIN_DATABASE_URL=postgresql+psycopg://${PGU}:${PGPW}@postgres:5432/nl_validation_e1" `
     -e NL_TEST_PGHOST=postgres -e NL_TEST_PGPORT=5432 -e NL_TEST_PGUSER=$PGU -e PGPASSWORD=$PGPW -e PYTHONDONTWRITEBYTECODE=1 -e DEBIAN_FRONTEND=noninteractive `
-    python:3.12-slim sh -c "apt-get update -qq >/dev/null && apt-get install -y -qq postgresql-client >/dev/null && cd services/api && pip install -q --disable-pip-version-check --root-user-action=ignore -e '.[dev]' && alembic upgrade head && python -m app.seed && cd /repo && DATABASE_URL=postgresql+asyncpg://nl_api:$($envVars['API_DB_PASSWORD'])@postgres:5432/nl_validation_e1 python -m pytest -v -rs -p no:cacheprovider -p no:logging database/tests/test_media_editorial_permissions.py database/tests/test_postgres_roles.py database/tests/test_media_foundation.py database/tests/test_media_scanner_role.py services/api/tests/unit/test_clamav_freshness.py services/api/tests/api/test_media_attachments.py services/api/tests/api/test_media_delivery.py services/api/tests/api/test_media_scan.py services/api/tests/api/test_editorial.py" 2>&1).Trim()
+    python:3.12-slim sh -c "apt-get update -qq >/dev/null && apt-get install -y -qq postgresql-client >/dev/null && cd services/api && pip install -q --disable-pip-version-check --root-user-action=ignore -e '.[dev]' && alembic upgrade head && python -m app.seed && cd /repo && python -m pytest -v -rs -p no:cacheprovider -p no:logging database/tests/test_media_editorial_permissions.py database/tests/test_postgres_roles.py database/tests/test_media_foundation.py database/tests/test_media_scanner_role.py ; a=`$? ; cd /repo/services/api && DATABASE_URL=postgresql+asyncpg://nl_api:$($envVars['API_DB_PASSWORD'])@postgres:5432/nl_validation_e1 python -m pytest -v -rs -p no:cacheprovider -p no:logging tests/unit/test_clamav_freshness.py tests/api/test_media_attachments.py tests/api/test_media_delivery.py tests/api/test_media_scan.py tests/api/test_editorial.py ; b=`$? ; echo NL_PYTEST_CODES=`$a/`$b ; [ `$a -eq 0 ] && exit `$b ; exit `$a" 2>&1).Trim()
 docker network connect nurselearn_media-scan $cid 2>&1 | Out-Null
 $pyOut = (docker start -a $cid 2>&1 | Out-String)
 $pyCode = [int](docker inspect -f "{{.State.ExitCode}}" $cid)
@@ -204,6 +204,17 @@ Psql "DROP DATABASE IF EXISTS nl_validation_e1 WITH (FORCE)" "postgres" | Out-Nu
 $lines = @($pyOut -split "`n" | Where-Object { $_ -match '::test_\S+ (PASSED|FAILED|SKIPPED|ERROR)' } | ForEach-Object { $_.Trim() })
 foreach ($l in ($pyOut -split "`n" | Where-Object { $_ -match '^=+ .*(passed|failed|error).* =+$' })) { Log "    $($l.Trim())" }
 foreach ($l in ($lines | Where-Object { $_ -notmatch 'PASSED' })) { Log "    $l" }
+# Deux processus pytest : les suites database/tests et services/api/tests importent
+# chacune leur propre « conftest » et ne peuvent pas être collectées ensemble.
+$codes = ($pyOut -split "`n" | Where-Object { $_ -match '^NL_PYTEST_CODES=' } | Select-Object -Last 1)
+if ($codes) { Log "    $($codes.Trim()) (base / API)" }
+if ($pyCode -ne 0 -and $lines.Count -eq 0) {
+    $secrets = @($PGPW, $rootSk, $envVars['API_DB_PASSWORD'], $envVars['REDIS_PASSWORD'], $envVars['MEDIA_SCANNER_DB_PASSWORD']) | Where-Object { $_ }
+    foreach ($l in ($pyOut -split "`n" | Select-Object -Last 30)) {
+        $m = $l.TrimEnd(); foreach ($s in $secrets) { $m = $m.Replace($s, '***') }
+        Log "    | $m"
+    }
+}
 function FileTests([string]$file) { @($lines | Where-Object { $_ -match [regex]::Escape($file) }) }
 function AllPassed([object[]]$set, [int]$min) { $set.Count -ge $min -and @($set | Where-Object { $_ -notmatch 'PASSED' }).Count -eq 0 }
 $sqlT = FileTests 'test_media_editorial_permissions.py'
