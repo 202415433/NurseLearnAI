@@ -164,6 +164,30 @@ jobs:
         env:
           API_DB_PASSWORD: ci-api-connection-pw
         run: alembic upgrade head && python -m app.seed && python -m app.seed
+      - name: ClamAV — charger les signatures téléchargées par freshclam
+        # L'image de service démarre clamd sur la base qu'elle embarque pendant que freshclam télécharge la
+        # mise à jour ; la notification freshclam → clamd est inopérante (/tmp/clamd.sock, connu depuis
+        # 2.2.3-c). On demande donc à clamd de recharger (commande RELOAD, ce que ferait la notification)
+        # jusqu'à obtenir des signatures de moins de 47 h. Aucun seuil abaissé, aucun contournement.
+        run: |
+          python - <<'EOF'
+          import socket, sys, time
+          from app.workers.clamd import ClamdClient
+          client, deadline = ClamdClient("localhost", 3310, 30), time.time() + 600
+          while time.time() < deadline:
+              try:
+                  info = client.version()
+                  print(info, flush=True)
+                  if info.signatures_published_at and time.time() - info.signatures_published_at.timestamp() < 47 * 3600:
+                      sys.exit(0)
+                  with socket.create_connection(("localhost", 3310), timeout=10) as sock:
+                      sock.sendall(b"zRELOAD\0")
+                      print("RELOAD :", sock.recv(64), flush=True)
+              except Exception as exc:  # démon en (re)chargement : on réessaie
+                  print(type(exc).__name__, exc, flush=True)
+              time.sleep(15)
+          sys.exit("ClamAV : signatures toujours absentes ou périmées après rechargement")
+          EOF
       - name: Tests de l'API — application connectée en nl_api (D14), fixtures en administration
         # Avertissement httpx de Starlette traité comme une erreur : il ne doit pas réapparaître.
         env:
