@@ -164,6 +164,30 @@ jobs:
         env:
           API_DB_PASSWORD: ci-api-connection-pw
         run: alembic upgrade head && python -m app.seed && python -m app.seed
+      - name: ClamAV — charger les signatures téléchargées par freshclam
+        # L'image de service démarre clamd sur la base qu'elle embarque pendant que freshclam télécharge la
+        # mise à jour ; la notification freshclam → clamd est inopérante (/tmp/clamd.sock, connu depuis
+        # 2.2.3-c). On demande donc à clamd de recharger (commande RELOAD, ce que ferait la notification)
+        # jusqu'à obtenir des signatures de moins de 47 h. Aucun seuil abaissé, aucun contournement.
+        run: |
+          python - <<'EOF'
+          import socket, sys, time
+          from app.workers.clamd import ClamdClient
+          client, deadline = ClamdClient("localhost", 3310, 30), time.time() + 600
+          while time.time() < deadline:
+              try:
+                  info = client.version()
+                  print(info, flush=True)
+                  if info.signatures_published_at and time.time() - info.signatures_published_at.timestamp() < 47 * 3600:
+                      sys.exit(0)
+                  with socket.create_connection(("localhost", 3310), timeout=10) as sock:
+                      sock.sendall(b"zRELOAD\0")
+                      print("RELOAD :", sock.recv(64), flush=True)
+              except Exception as exc:  # démon en (re)chargement : on réessaie
+                  print(type(exc).__name__, exc, flush=True)
+              time.sleep(15)
+          sys.exit("ClamAV : signatures toujours absentes ou périmées après rechargement")
+          EOF
       - name: Tests de l'API — application connectée en nl_api (D14), fixtures en administration
         # Avertissement httpx de Starlette traité comme une erreur : il ne doit pas réapparaître.
         env:
@@ -178,6 +202,10 @@ jobs:
           for i in $(seq 1 30); do curl -fsS localhost:8000/ready && break; sleep 1; done
           curl -fsS "localhost:8000/api/v1/professions?jurisdiction=CA-QC" | grep -q '"code":"pab"'
           curl -fsS "localhost:8000/api/v1/programs?jurisdiction=CA-QC&profession=pab" | grep -q '"total":0'
+          # 2.2.3-d : service de diffusion séparé (lecture seule) ; aucune diffusion sans session.
+          uvicorn app.main:create_delivery_app --factory --port 8001 --no-server-header &
+          for i in $(seq 1 30); do curl -fsS localhost:8001/ready && break; sleep 1; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8001/api/v1/media/00000000-0000-4000-a000-000000000000/preview)" = "401"
 
   web:
     name: Web Next.js (composants, build, parcours e2e, accessibilité axe)
@@ -305,7 +333,7 @@ jobs:
           done
           docker compose config -q
           docker compose config --services | sort | tr '\n' ' ' | tee /tmp/services
-          grep -q "api mailpit migrate postgres redis s3 s3-init web" /tmp/services
+          grep -q "api mailpit media-delivery migrate postgres redis s3 s3-init web" /tmp/services
           # L'API ne reçoit AUCUN identifiant d'administration ; seule `migrate` les détient.
           docker compose config --format json | python3 -c "import json,sys; s=json.load(sys.stdin)['services']; e=s['api']['environment']; assert '//nl_api:' in e['DATABASE_URL'] and not any(k in e for k in ('POSTGRES_PASSWORD','MEDIA_SCANNER_DB_PASSWORD','API_DB_PASSWORD')), 'API : identifiants'; print('api: nl_api uniquement')"
           # R3 : ni l'API ni le worker ne reçoivent la clé racine RustFS ; seul `s3-init` la détient.
@@ -319,11 +347,15 @@ jobs:
           assert i['S3_ADMIN_SECRET_KEY']==root
           for n,svc in s.items():
               if n not in ('s3','s3-init'): assert root not in json.dumps(svc.get('environment',{})), n
-          print('R3 : clé racine réservée à s3 et s3-init')"
+          d=s['media-delivery']['environment']  # 2.2.3-d : diffusion = identité de LECTURE seule
+          assert d['S3_ACCESS_KEY']=='nl-media-reader' and d['S3_SECRET_KEY']==i['S3_READER_SECRET_KEY']
+          assert d['S3_SECRET_KEY'] not in (a['S3_SECRET_KEY'], w['S3_SECRET_KEY']) and 'MEDIA_QUARANTINE_BUCKET' not in d
+          assert d['DATABASE_URL']==a['DATABASE_URL'] and '//nl_api:' in d['DATABASE_URL']
+          print('R3 : clé racine réservée à s3 et s3-init ; diffusion en lecture seule')"
           # Profil « media » (2.2.3-c) : ClamAV et worker, absents de la pile par défaut.
           docker compose --profile media config -q
           docker compose --profile media config --services | sort | tr '\n' ' ' | tee /tmp/media
-          grep -q "clamd freshclam mailpit media-worker" /tmp/media
+          grep -q "clamd freshclam mailpit media-delivery media-worker" /tmp/media
           test -z "$(docker compose --profile media config | sed -n '/^  clamd:/,/^  [a-z-]*:$/p' | grep -E '^\s+ports:')"
       - name: docker compose up --build -d (attente de la santé)
         run: |
@@ -353,6 +385,12 @@ jobs:
           docker compose run --rm --no-deps -T s3-init python -m app.ops.s3_provision --check
           # Sonde par l'entrée standard (le worker a un système de fichiers en lecture seule, /tmp en tmpfs).
           docker compose exec -T api python - api < scripts/r3_s3_probe.py
+          # 2.2.3-d : service de diffusion séparé, identité de lecture seule, session obligatoire.
+          curl -fsS localhost:28001/ready | grep -q '"database":"ok"'
+          docker compose exec -T media-delivery python - reader < scripts/r3_s3_probe.py
+          test "$(curl -s -o /dev/null -w '%{http_code}' localhost:28001/api/v1/media/00000000-0000-4000-a000-000000000000/preview)" = "401"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer inconnu' 'localhost:28001/api/v1/media/00000000-0000-4000-a000-000000000000/content?release=00000000-0000-4000-a000-000000000000&lesson_version=00000000-0000-4000-a000-000000000000')" = "401"
+          curl -fsS localhost:28000/openapi.json | python3 -c "import json,sys; p=json.load(sys.stdin)['paths']; assert not any(k.startswith('/api/v1/media') for k in p), 'API : aucune diffusion'"
           docker compose exec -T postgres psql -U nurselearn -d nurselearn -v ON_ERROR_STOP=1 -q -f /database/checks/verify_head.sql
           test "$(docker compose exec -T postgres psql -U nurselearn -d nurselearn -Atc "SELECT count(*) FROM pg_stat_activity WHERE usename = 'nl_api'")" -ge 1
           docker compose exec -T api python /dev/stdin <<'PY'
@@ -404,6 +442,7 @@ jobs:
           docker compose run --rm --no-deps -T s3-init python -m app.ops.s3_provision --check
           docker compose exec -T api python - api < scripts/r3_s3_probe.py
           docker compose exec -T media-worker python - scanner < scripts/r3_s3_probe.py
+          docker compose exec -T media-delivery python - reader < scripts/r3_s3_probe.py
       - name: Journaux en cas d'échec
         if: failure()
         run: docker compose logs --tail 100

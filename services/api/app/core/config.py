@@ -111,6 +111,22 @@ class Settings(BaseSettings):
     media_scan_stream: str = "nl:media:scan"
     media_scan_reconcile_seconds: int = Field(60, ge=1, le=3600)
 
+    # Diffusion des médias sains (2.2.3-d, D18, D24) : service séparé `media-delivery`, identité S3
+    # de LECTURE seule (nl-media-reader). Aucun jeton autonome : chaque requête (y compris chaque
+    # requête Range) est authentifiée par la session et autorisée à neuf.
+    media_delivery_chunk_bytes: int = Field(256 * 1024, ge=16 * 1024, le=4 * 1048576)
+    # Plage ouverte (« bytes=N- ») : réponse partielle bornée (le lecteur vidéo redemande la suite).
+    media_delivery_max_open_range_bytes: int = Field(8 * 1048576, ge=1048576, le=256 * 1048576)
+    # Revérification de l'autorisation pendant un flux long (session, état, époque) ; échec = coupure.
+    media_delivery_recheck_seconds: float = Field(10, ge=0.1, le=300)
+    # Limites de débit (fenêtre d'une minute, Redis, fermé par défaut ; 0 = désactivée).
+    media_delivery_content_per_minute_user: int = Field(240, ge=0)
+    media_delivery_preview_per_minute_user: int = Field(120, ge=0)
+    media_delivery_per_minute_org: int = Field(3000, ge=0)
+    media_delivery_range_per_minute_media: int = Field(120, ge=0)
+    media_delivery_bytes_per_minute_user: int = Field(512 * 1048576, ge=0)
+    media_delivery_concurrent_streams_user: int = Field(4, ge=0)
+
     @model_validator(mode="after")
     def _production_guards(self) -> Settings:
         if self.app_env == "production" and any(o.strip() == "*" for o in self.cors_origins):

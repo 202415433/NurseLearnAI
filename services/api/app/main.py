@@ -22,6 +22,7 @@ from app.domains.catalog.router import router as catalog_router
 from app.domains.editorial.router import router as editorial_router
 from app.domains.identity.organizations import router as organizations_router
 from app.domains.identity.router import router as identity_router
+from app.domains.media.delivery import router as delivery_router
 from app.domains.media.routes import router as media_router
 from app.domains.reference.router import router as reference_router
 
@@ -36,7 +37,30 @@ DISCLAIMER = {
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    settings = settings or get_settings()
+    """API principale (référentiels, catalogue, identité, édition, téléversement). Ne sert aucun octet."""
+    app = _build_app(settings or get_settings(), "NurseLearn AI — API", "API de la plateforme NurseLearn AI. ")
+    app.include_router(reference_router)
+    app.include_router(catalog_router)
+    app.include_router(identity_router)
+    app.include_router(organizations_router)
+    app.include_router(media_router)
+    app.include_router(editorial_router)
+    return app
+
+
+def create_delivery_app(settings: Settings | None = None) -> FastAPI:
+    """Service de DIFFUSION des médias sains (2.2.3-d), processus séparé : identité S3 de lecture seule
+    (`nl-media-reader`), aucune route d'écriture. Lancement : uvicorn app.main:create_delivery_app --factory"""
+    app = _build_app(
+        settings or get_settings(),
+        "NurseLearn AI — diffusion des médias",
+        "Diffusion authentifiée des médias sains (aucune URL de stockage, aucun jeton autonome). ",
+    )
+    app.include_router(delivery_router)
+    return app
+
+
+def _build_app(settings: Settings, title: str, description: str) -> FastAPI:
     configure_logging(settings.log_level)
 
     @asynccontextmanager
@@ -57,9 +81,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await app.state.engine.dispose()
 
     app = FastAPI(
-        title="NurseLearn AI — API",
+        title=title,
         version=API_VERSION,
-        description="API de la plateforme NurseLearn AI. " + DISCLAIMER["fr"],
+        description=description + DISCLAIMER["fr"],
         lifespan=lifespan,
         # Hors production seulement (sauf DOCS_ENABLED explicite) : n'expose pas la structure interne.
         docs_url="/docs" if settings.docs_visible else None,
@@ -137,13 +161,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def about() -> dict[str, object]:
         return {"name": "NurseLearn AI", "version": API_VERSION, "disclaimer": DISCLAIMER}
 
-    app.include_router(reference_router)
-    app.include_router(catalog_router)
-    app.include_router(identity_router)
-    app.include_router(organizations_router)
-    app.include_router(media_router)
-    app.include_router(editorial_router)
     return app
 
 
 # Lancement : uvicorn app.main:create_app --factory  (la configuration est lue au démarrage)
+#             uvicorn app.main:create_delivery_app --factory  (service de diffusion, 2.2.3-d)

@@ -106,7 +106,7 @@ $cfg = ApiPy "from app.core.config import get_settings as g; s=g(); print(bool(s
 Result "api_configuree_pour_stockage_prive" ($cfg -match "^True True True nl-media-quarantine$") ($cfg -replace '\s+', ' ')
 # Aucune route ne diffuse un contenu : inventaire exact des opérations médias (sans GET …/content).
 $routes = ApiPy "from app.main import create_app; p = create_app().openapi()['paths']; print(sorted(f'{m.upper()} {k}' for k, v in p.items() if k.startswith('/api/v1/editorial/media') for m in v))"
-$expected = "['DELETE /api/v1/editorial/media/{media_id}', 'GET /api/v1/editorial/media', 'GET /api/v1/editorial/media/{media_id}', 'POST /api/v1/editorial/media', 'PUT /api/v1/editorial/media/{media_id}/content']"
+$expected = "['DELETE /api/v1/editorial/media/{media_id}', 'GET /api/v1/editorial/media', 'GET /api/v1/editorial/media/{media_id}', 'POST /api/v1/editorial/media', 'POST /api/v1/editorial/media/{media_id}/revoke', 'PUT /api/v1/editorial/media/{media_id}/content']"
 Result "cinq_operations_aucune_diffusion" ($routes -eq $expected) $routes
 $deps = ApiPy "import importlib.metadata as m; print(m.version('pillow'), m.version('pypdf'), m.version('boto3'))"
 Result "bibliotheques_installees" ($deps -match "^13\.\d+\.\d+ 6\.\d+\.\d+ 1\.\d+") $deps

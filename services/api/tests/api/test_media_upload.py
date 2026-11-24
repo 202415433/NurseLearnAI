@@ -569,8 +569,10 @@ def test_nothing_is_ever_served(api: TestClient, mw: MWorld, sync_engine: Engine
         ("PUT", f"{M}/{{media_id}}/content"),
         ("GET", f"{M}/{{media_id}}"),
         ("DELETE", f"{M}/{{media_id}}"),
+        ("POST", f"{M}/{{media_id}}/revoke"),  # 2.2.3-d : révocation (aucun octet servi)
     }
-    assert not any("/api/v1/media" in p for p in paths)  # aucune diffusion (2.2.3-d)
+    # L'API d'édition ne diffuse jamais : la diffusion est un service séparé (create_delivery_app, 2.2.3-d).
+    assert not any("/api/v1/media" in p for p in paths)
     body = api.get(f"{M}/{done['id']}", headers=mw.author.h)
     assert body.headers["content-type"].startswith("application/json") and "key" not in body.text.lower()
     # Le téléversement seul ne produit jamais un média sain ; depuis 2.2.3-c, seul un verdict antivirus

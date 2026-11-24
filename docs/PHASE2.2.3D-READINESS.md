@@ -1,5 +1,9 @@
 # Préparation — Étape 2.2.3-d : diffusion autorisée des médias, révocation, conservation
 
+> **Statut : implémentée** sur la branche `phase-2.2.3d-secure-media-delivery` — voir
+> [VALIDATION-PHASE2.2.3D.md](VALIDATION-PHASE2.2.3D.md) (décisions retenues, notamment : aucun jeton
+> autonome, service de diffusion séparé, aucune purge). Texte d'origine conservé ci-dessous.
+>
 > Préparation seulement : **aucun développement 2.2.3-d n'est engagé**. Il faut d'abord que 2.2.3-c soit
 > intégrée, puis une autorisation explicite. Références : [plan 2.2.3](PHASE2.2.3-PLAN.md) § 8 ·
 > [validation 2.2.3-c](VALIDATION-PHASE2.2.3C.md) · [ADR-0011](adr/0011-medias-antivirus.md).

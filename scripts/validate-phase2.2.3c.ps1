@@ -43,7 +43,7 @@ function ReadEnv {
 Log "NurseLearn AI — validation étape 2.2.3-c — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_phase_2_2_3c" ($branch -like "phase-2.2.3c*" -or $branch -like "security-*") $branch
+Result "branche_phase_2_2_3c" ($branch -like "phase-2.2.3[c-z]*" -or $branch -like "security-*") $branch
 $dirty = (git status --porcelain --untracked-files=no 2>$null | Where-Object { $_ -notmatch 'docs/validation-logs' }) -join " "
 Result "git_sans_modification_locale" ([string]::IsNullOrWhiteSpace($dirty)) $dirty
 $hist = (git diff --diff-filter=MD --name-only origin/main...HEAD -- database/schema 2>$null) -join " "
@@ -202,7 +202,7 @@ Result "journal_analyses_ajout_seul" ($probe -match "ERROR|ERREUR" -and $guards 
 $probe = Psql "BEGIN; SELECT set_config('nl.role_grant_bypass', 'on', true); INSERT INTO user_roles (user_id, role_id) SELECT id, (SELECT id FROM roles WHERE code = 'media_scanner') FROM users WHERE id <> '00000000-0000-4000-a000-00000000c1a5' LIMIT 1; ROLLBACK;"
 Result "role_media_scanner_non_attribuable" ($probe -match "compte de service") "sonde annulée"
 $routes = (docker compose exec -T api python -c "from app.main import create_app; p = create_app().openapi()['paths']; print(sorted(f'{m.upper()} {k}' for k, v in p.items() if k.startswith('/api/v1/editorial/media') for m in v))" 2>&1 | Out-String).Trim()
-Result "aucune_route_de_diffusion" ($routes -eq "['DELETE /api/v1/editorial/media/{media_id}', 'GET /api/v1/editorial/media', 'GET /api/v1/editorial/media/{media_id}', 'POST /api/v1/editorial/media', 'PUT /api/v1/editorial/media/{media_id}/content']") $routes
+Result "aucune_route_de_diffusion" ($routes -eq "['DELETE /api/v1/editorial/media/{media_id}', 'GET /api/v1/editorial/media', 'GET /api/v1/editorial/media/{media_id}', 'POST /api/v1/editorial/media', 'POST /api/v1/editorial/media/{media_id}/revoke', 'PUT /api/v1/editorial/media/{media_id}/content']") $routes
 try { $r = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:9000/nl-media-clean/" -ErrorAction Stop; $code = [int]$r.StatusCode } catch { $code = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { -1 } }
 Result "stockage_sain_illisible_anonymement" ($code -eq 403 -or $code -eq 404) "statut $code"
 $med = Psql "SELECT count(*) FROM programs WHERE is_medical AND status = 'published'"

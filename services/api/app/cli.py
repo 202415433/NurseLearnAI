@@ -2,6 +2,12 @@
 
     python -m app.cli grant-platform-admin <courriel>
     python -m app.cli create-organization <slug> "<nom>" [--kind school|hospital|care_home|employer|other]
+    python -m app.cli media-legal-hold <média> --by <courriel admin> (--reason "<motif>" | --release)
+
+`media-legal-hold` (2.2.3-d, S13) pose ou lève une obligation de conservation légale sur un média.
+L'administrateur désigné (permission user:manage) est l'acteur : la base vérifie son droit et
+journalise `media.legal_hold_set` / `media.legal_hold_released`. Un média sous conservation ne peut
+être ni supprimé ni purgé ; la conservation n'autorise AUCUNE diffusion supplémentaire.
 
 La première commande est le seul moyen d'obtenir le rôle d'administrateur de la plateforme
 (ADR-0007) : elle contourne explicitement la garde d'attribution des rôles, dans une transaction,
@@ -19,8 +25,8 @@ import psycopg
 from app.core.config import get_settings
 
 
-def _conn() -> psycopg.Connection:
-    url = get_settings().sync_database_url.replace("postgresql+psycopg://", "postgresql://", 1)
+def _conn(url: str | None = None) -> psycopg.Connection:
+    url = (url or get_settings().sync_database_url).replace("postgresql+psycopg://", "postgresql://", 1)
     return psycopg.connect(url)
 
 
@@ -74,6 +80,34 @@ def create_organization(slug: str, name: str, kind: str) -> int:
     return 0
 
 
+def media_legal_hold(media_id: str, by: str, reason: str | None, release: bool, url: str | None = None) -> int:
+    if release == (reason is not None):
+        print("Indiquer soit --reason (pose), soit --release (levée).", file=sys.stderr)
+        return 2
+    with _conn(url) as conn, conn.cursor() as cur:
+        cur.execute("SELECT id FROM users WHERE email = %s AND deleted_at IS NULL AND status = 'active'", (by.lower(),))
+        actor = cur.fetchone()
+        if actor is None:
+            print("Administrateur introuvable ou inactif.", file=sys.stderr)
+            return 1
+        cur.execute("SELECT set_config('nl.actor_id', %s, true)", (str(actor[0]),))
+        try:
+            cur.execute(
+                "UPDATE media_assets SET legal_hold = %s, legal_hold_reason = %s WHERE id = %s RETURNING legal_hold",
+                (not release, None if release else reason, media_id),
+            )
+        except psycopg.Error as exc:
+            conn.rollback()
+            print(f"Refusé par la base : {exc.diag.message_primary}", file=sys.stderr)
+            return 1
+        if cur.fetchone() is None:
+            print("Média introuvable.", file=sys.stderr)
+            return 1
+        conn.commit()
+    print("Conservation légale levée." if release else "Conservation légale posée.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -83,9 +117,16 @@ def main(argv: list[str] | None = None) -> int:
     org.add_argument("slug")
     org.add_argument("name")
     org.add_argument("--kind", default="school", choices=["school", "hospital", "care_home", "employer", "other"])
+    hold = sub.add_parser("media-legal-hold")
+    hold.add_argument("media_id")
+    hold.add_argument("--by", required=True, help="courriel de l'administrateur (user:manage)")
+    hold.add_argument("--reason", help="motif (5 à 1000 caractères)")
+    hold.add_argument("--release", action="store_true")
     args = parser.parse_args(argv)
     if args.command == "grant-platform-admin":
         return grant_platform_admin(args.email)
+    if args.command == "media-legal-hold":
+        return media_legal_hold(args.media_id, args.by, args.reason, args.release)
     return create_organization(args.slug, args.name, args.kind)
 
 

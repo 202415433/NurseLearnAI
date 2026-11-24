@@ -72,15 +72,20 @@ def clamd() -> Iterator[tuple[str, int]]:
     host, port = CLAMD_HOST or "", int(os.environ.get("NL_TEST_CLAMD_PORT", "3310"))
     client = ClamdClient(host, port, 30)
     deadline = time.monotonic() + 600
+    last = "aucune réponse"
     while True:  # ClamAV réel : attendre des signatures chargées ET fraîches (freshclam au démarrage)
         try:
             info = client.version()
+            last = f"{info.engine_version}/{info.signature_version}/{info.signatures_published_at}"
             if info.signatures_published_at and time.time() - info.signatures_published_at.timestamp() < 47 * 3600:
                 break
-        except Exception:  # noqa: S110 - démon encore en chargement : on réessaie
-            pass
+        except Exception as exc:  # démon encore en chargement : on réessaie (dernière cause conservée)
+            last = f"{type(exc).__name__}: {exc}"
         if time.monotonic() > deadline:
-            pytest.fail("ClamAV : signatures absentes ou de plus de 47 h après 10 min d'attente (freshclam ?)")
+            pytest.fail(
+                "ClamAV : signatures absentes ou de plus de 47 h après 10 min d'attente (freshclam ?) — "
+                f"dernière réponse : {last}"
+            )
         time.sleep(5)
     yield host, port
 
@@ -434,7 +439,8 @@ def test_isolation_privacy_and_no_distribution(api, mw, sync_engine, worker):
     assert api.get(f"{M}/{mid}", headers=mw.other_instr.h).status_code == 404  # autre établissement
     assert api.get(f"{M}/{mid}", headers=mw.student.h).status_code in (403, 404)  # étudiant
     paths = {p for p in api.app.openapi()["paths"] if p.startswith(M)}  # type: ignore[attr-defined]
-    assert paths == {M, f"{M}/{{media_id}}", f"{M}/{{media_id}}/content"}
+    # 2.2.3-d : seule la révocation s'ajoute ; l'API d'édition ne sert toujours aucun octet.
+    assert paths == {M, f"{M}/{{media_id}}", f"{M}/{{media_id}}/content", f"{M}/{{media_id}}/revoke"}
     assert "get" not in api.app.openapi()["paths"][f"{M}/{{media_id}}/content"]  # type: ignore[attr-defined]
     r = row(sync_engine, mid)
     if REAL_S3:
