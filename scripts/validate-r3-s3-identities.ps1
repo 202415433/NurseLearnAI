@@ -52,7 +52,8 @@ Result "git_sans_modification_locale" ([string]::IsNullOrWhiteSpace($dirty)) $di
 $hist = (git diff --diff-filter=MD --name-only origin/main...HEAD -- database/schema services/api/alembic/versions 2>$null) -join " "
 Result "migrations_historiques_inchangees" ([string]::IsNullOrWhiteSpace($hist)) $hist
 $newMig = (git diff --diff-filter=A --name-only origin/main...HEAD -- database/schema services/api/alembic/versions 2>$null) -join " "
-Result "aucune_nouvelle_migration" ([string]::IsNullOrWhiteSpace($newMig)) $newMig
+# R3 n'ajoute aucune migration ; une étape ultérieure (0010, 2.2.3-e) peut en ajouter.
+Result "aucune_nouvelle_migration" ([string]::IsNullOrWhiteSpace($newMig) -or $branch -notlike "security-r3*") $newMig
 Result "fichiers_r3_presents" ((Test-Path "$root\services\api\app\ops\s3_provision.py") -and (Test-Path "$root\services\api\tests\api\test_s3_identities.py") -and (Test-Path "$root\scripts\r3_s3_probe.py")) ""
 
 # -----------------------------------------------------------------------------
@@ -235,7 +236,7 @@ Result "aucun_programme_medical_publie" ($med -eq "0") "programmes médicaux pub
 $pilot = Psql "SELECT status FROM programs WHERE code = 'pab-qc-socle'"
 Result "pilote_pab_en_brouillon" ($pilot -eq "draft") $pilot
 $routes = (docker compose exec -T api python -c "from app.main import create_app; p = create_app().openapi()['paths']; print(sorted(f'{m.upper()} {k}' for k, v in p.items() if k.startswith('/api/v1/editorial/media') for m in v))" 2>&1 | Out-String).Trim()
-Result "aucune_route_de_diffusion" ($routes -eq "['DELETE /api/v1/editorial/media/{media_id}', 'GET /api/v1/editorial/media', 'GET /api/v1/editorial/media/{media_id}', 'POST /api/v1/editorial/media', 'POST /api/v1/editorial/media/{media_id}/revoke', 'PUT /api/v1/editorial/media/{media_id}/content']") $routes
+Result "aucune_route_de_diffusion" ($routes -eq "['DELETE /api/v1/editorial/media/{media_id}', 'GET /api/v1/editorial/media', 'GET /api/v1/editorial/media/{media_id}', 'GET /api/v1/editorial/media/{media_id}/legal-hold', 'POST /api/v1/editorial/media', 'POST /api/v1/editorial/media/{media_id}/legal-hold', 'POST /api/v1/editorial/media/{media_id}/revoke', 'PUT /api/v1/editorial/media/{media_id}/content']") $routes
 $presign = (git grep -n -E "generate_presigned|presigned_url|PublicRead|public-read" -- services apps 2>$null | Where-Object { $_ -notmatch 'tests/' }) -join " "
 Result "aucune_url_publique_ni_presignee" ([string]::IsNullOrWhiteSpace($presign)) $presign
 

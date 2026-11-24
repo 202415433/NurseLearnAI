@@ -51,10 +51,11 @@ function HttpCode([string]$uri, [hashtable]$headers = @{}) {
 Log "NurseLearn AI — validation 2.2.3-d (diffusion sécurisée des médias) — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_2_2_3d" ($branch -like "phase-2.2.3d*") $branch
+Result "branche_2_2_3d" ($branch -like "phase-2.2.3[d-z]*") $branch
 $dirty = (git status --porcelain --untracked-files=no 2>$null | Where-Object { $_ -notmatch 'docs/validation-logs' }) -join " "
 Result "git_sans_modification_locale" ([string]::IsNullOrWhiteSpace($dirty)) $dirty
-$mig = (git diff --name-only origin/main...HEAD -- database/schema services/api/alembic/versions 2>$null) -join " "
+# 2.2.3-d n'ajoute aucune migration ; une étape ultérieure (0010, 2.2.3-e) peut en AJOUTER, jamais en modifier.
+$mig = (git diff --name-only $(if ($branch -like "phase-2.2.3d*") { "--diff-filter=ACMRD" } else { "--diff-filter=MD" }) origin/main...HEAD -- database/schema services/api/alembic/versions 2>$null) -join " "
 Result "aucune_migration_modifiee_ni_ajoutee" ([string]::IsNullOrWhiteSpace($mig)) $mig
 Result "fichiers_2_2_3d_presents" ((Test-Path "$root\services\api\app\domains\media\delivery.py") -and (Test-Path "$root\services\api\tests\api\test_media_delivery.py") -and (Test-Path "$root\services\api\app\ops\media_retention.py")) ""
 

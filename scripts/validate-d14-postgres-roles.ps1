@@ -133,11 +133,12 @@ if ($reg12) {
 # 3. Contrôles D14
 # -----------------------------------------------------------------------------
 $rev = Psql "SELECT version_num FROM alembic_version"
-Result "migration_0009_appliquee" ($rev -eq "0009_postgres_role_separation") $rev
+# 0009 ou une migration additive ultérieure (0010, 2.2.3-e) lorsque ce script est enchaîné.
+Result "migration_0009_appliquee" ($rev -match '^(0009|00[1-9][0-9])_') $rev
 $migrate = (docker compose ps -a migrate --format "{{.ExitCode}}" 2>$null | Select-Object -First 1)
 Result "migrations_par_le_conteneur_migrate" ("$migrate".Trim() -eq "0") "code de sortie=$migrate"
 $verify = (docker compose exec -T postgres psql -U $PGU -d $PGDB -X -q -v ON_ERROR_STOP=1 -f /database/checks/verify_head.sql 2>&1 | Out-String)
-Result "schema_tete_verifie_avec_d14" ($verify -match "OK : 75 tables") (($verify -split "`n" | Select-String "OK :|ERR|ERREUR|EXCEPTION") -join " ")
+Result "schema_tete_verifie_avec_d14" ($verify -match "OK : 7[56] tables") (($verify -split "`n" | Select-String "OK :|ERR|ERREUR|EXCEPTION") -join " ")
 
 $roles = Psql "SELECT string_agg(rolname || ':' || rolsuper || '/' || rolcreatedb || '/' || rolcreaterole || '/' || rolbypassrls || '/' || rolcanlogin, ' ' ORDER BY rolname) FROM pg_roles WHERE rolname IN ('nl_owner', 'nl_api', 'nl_media_scanner')"
 Result "roles_sans_privilege" ($roles -eq "nl_api:false/false/false/false/true nl_media_scanner:false/false/false/false/true nl_owner:false/false/false/false/false") $roles
@@ -174,8 +175,9 @@ Result "aucun_programme_medical_publie" ($med -eq "0") "programmes médicaux pub
 $pilot = Psql "SELECT status FROM programs WHERE code = 'pab-qc-socle'"
 Result "pilote_pab_en_brouillon" ($pilot -eq "draft") $pilot
 $routes = (docker compose exec -T api python -c "from app.main import create_app; p = create_app().openapi()['paths']; print(sum(1 for k in p if k.startswith('/api/v1/editorial/media')))" 2>&1 | Out-String).Trim()
-# 2.2.3-d : la révocation (/revoke) s'ajoute ; la diffusion est un service séparé, hors de l'API.
-Result "aucune_route_de_diffusion_ajoutee" ($routes -eq "4") "chemins médias=$routes"
+# 2.2.3-d : révocation (/revoke) ; 2.2.3-e : conservation légale (/legal-hold). La diffusion reste un
+# service séparé, hors de l'API (aucun chemin /content en lecture : vérifié par les scripts 2.2.3-b/c).
+Result "aucune_route_de_diffusion_ajoutee" ($routes -eq "5") "chemins médias=$routes"
 
 Log ""; Log "================ SYNTHÈSE D14 ================"
 $fail = 0

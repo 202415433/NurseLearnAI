@@ -130,10 +130,15 @@ def test_security_definer_functions_are_justified_and_locked(db):
         "WHERE n.nspname = 'public' AND p.prosecdef"
     ).splitlines()
     assert rows == [
+        # 0010 (2.2.3-e) : rattachement / détachement et conservation légale, par fonctions contrôlées
+        # seulement (l'API n'a aucun droit d'écriture sur lesson_version_media ni sur legal_hold).
+        "nl_media_attach|nl_owner|search_path=public, pg_temp|false|true",
+        "nl_media_detach|nl_owner|search_path=public, pg_temp|false|true",
         "nl_media_reserve|nl_owner|search_path=public, pg_temp|false|true",  # réservation de quota (API)
         "nl_media_scanner_audit|nl_owner|search_path=public, pg_temp|false|false",  # audit du worker
         "nl_media_scanner_identity|nl_owner|search_path=public, pg_temp|false|false",
         "nl_media_scanner_provision|nl_owner|search_path=public, pg_temp|false|false",
+        "nl_media_set_legal_hold|nl_owner|search_path=public, pg_temp|false|true",
         "nl_media_usage_row|nl_owner|search_path=public, pg_temp|false|false",  # interne à la réservation
     ]
 

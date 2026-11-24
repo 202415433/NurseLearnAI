@@ -66,6 +66,11 @@ CODES: dict[str, tuple[int, str, str]] = {
     # 0007 (2.2.3-a) : une version de leçon ne quitte pas le brouillon avec un média non validé.
     "media_not_clean": (422, "publication-requirements", "Média non validé par l'antivirus rattaché à la version"),
     "missing_captions": (422, "publication-requirements", "Vidéo sans sous-titres validés (WCAG 1.2.2)"),
+    # 0010 (2.2.3-e) : rattachement contrôlé et conservation légale.
+    "not_found": (404, "not-found", "Élément introuvable"),
+    "reason_required": (422, "invalid-input", "Justification obligatoire (5 à 1000 caractères)"),
+    "no_change": (409, "editorial-state-conflict", "Aucun changement : état déjà en place"),
+    "purged": (409, "editorial-state-conflict", "Média purgé"),
     "missing_author": (422, "publication-requirements", "Auteur non renseigné"),
     "missing_base_locale": (422, "publication-requirements", "Chaque leçon exige une version française"),
     "prerequisite_cycle": (422, "publication-requirements", "Prérequis circulaires"),

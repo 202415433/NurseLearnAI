@@ -430,6 +430,43 @@ jobs:
           # R3 : le worker lit la quarantaine et écrit le compartiment sain, sans aucun droit d'administration.
           docker compose exec -T media-worker python - scanner < scripts/r3_s3_probe.py
           docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' | grep -E 'clamd|freshclam|media-worker'
+      - name: FreshClam → clamd (2.2.3-e) — socket dédié, notification, rechargement effectif, redémarrages
+        run: |
+          # Version chargée par clamd (via le worker, réseau interne) et version présente sur disque.
+          loaded() { docker compose exec -T media-worker python -c "from app.core.config import get_settings as g; from app.workers.clamd import ClamdClient as C; s = g(); print(C(s.clamd_host, s.clamd_port, 10).version().signature_version)"; }
+          ondisk() { docker compose exec -T freshclam sh -c 'for f in daily.cld daily.cvd; do [ -s /var/lib/clamav/$f ] && sigtool --info /var/lib/clamav/$f && break; done' | awk '/^Version:/ {print $2}'; }
+          ping_from_freshclam() { docker compose exec -T -u clamav freshclam clamdscan --config-file=/etc/clamav/clamd.conf --ping 5; }
+          # 1. Socket dédié (volume clamav-sock) : propriétaire clamav, 0660 ; plus aucun socket dans /tmp.
+          test "$(docker compose exec -T clamd stat -c '%U:%G %a %F' /run/clamav/clamd.sock)" = "clamav:clamav 660 socket"
+          test "$(docker compose exec -T clamd stat -c '%U %a' /run/clamav)" = "clamav 750"
+          ! docker compose exec -T clamd test -S /tmp/clamd.sock
+          # 2. Notification : freshclam (hors réseau media-scan : PAS de TCP) joint clamd par le socket, en clamav.
+          docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$(docker compose ps -q freshclam)" | tee /tmp/fc-net
+          ! grep -q media-scan /tmp/fc-net
+          ping_from_freshclam
+          # 3. Rechargement effectif : RELOAD par le chemin de NotifyClamd, puis version chargée = version sur disque.
+          before=$(docker compose logs clamd 2>&1 | grep -c "Database correctly reloaded" || true)
+          docker compose exec -T -u clamav freshclam clamdscan --config-file=/etc/clamav/clamd.conf --reload
+          for i in $(seq 1 60); do
+            after=$(docker compose logs clamd 2>&1 | grep -c "Database correctly reloaded" || true)
+            [ "$after" -gt "$before" ] && [ "$(loaded)" = "$(ondisk)" ] && break; sleep 5
+          done
+          echo "rechargements : $before -> $after ; chargée=$(loaded) ; disque=$(ondisk)"
+          test "$after" -gt "$before" && test "$(loaded)" = "$(ondisk)"
+          if docker compose logs freshclam 2>&1 | grep -q "Clamd successfully notified"; then echo "notification freshclam : réussie"; fi
+          # 4. Redémarrages : socket recréé (FixStaleSocket), notification toujours possible.
+          docker compose restart clamd
+          for i in $(seq 1 120); do [ "$(docker compose ps clamd --format '{{.Health}}')" = "healthy" ] && break; sleep 5; done
+          ping_from_freshclam
+          docker compose restart freshclam
+          for i in $(seq 1 60); do [ "$(docker compose ps freshclam --format '{{.Health}}')" = "healthy" ] && break; sleep 5; done
+          ping_from_freshclam
+          # 5. FreshClam indisponible : clamd continue de servir ; la fraîcheur (≤ 48 h) reste exigée par le worker.
+          docker compose stop freshclam
+          docker compose exec -T media-worker python -m app.workers.media_scan --self-check
+          test "$(docker compose ps clamd --format '{{.Health}}')" = "healthy"
+          docker compose start freshclam
+          ! docker compose logs freshclam 2>&1 | tail -50 | grep -q "Can't connect to clamd through /tmp/clamd.sock"
       - name: Persistance après redémarrage de PostgreSQL
         run: |
           docker compose restart postgres

@@ -118,6 +118,8 @@ def media_out(row: Any) -> dict[str, Any]:
         "captions_for": row["captions_for"],
         "reservation_expires_at": row["reservation_expires_at"],
         "deleted_at": row["deleted_at"],
+        "legal_hold": row["legal_hold"],  # motif réservé à l'historique d'administration (2.2.3-e)
+        "access_epoch": row["access_epoch"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -486,3 +488,70 @@ async def revoke_media(
             access_epoch=epoch,
         )
     return media_out(await _load(db, ctx, mid))
+
+
+# --------------------------------------------------------------------------- conservation légale (2.2.3-e)
+class LegalHoldIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    hold: bool
+    reason: str = Field(min_length=5, max_length=1000)
+
+
+def _can_hold(ctx: AuthContext, org: uuid.UUID | None) -> bool:
+    # Permission dédiée (0010) dans la portée du média ET administration de la plateforme (0007).
+    return ctx.can("media:legal_hold", org) and ctx.can("user:manage", None)
+
+
+@router.post(
+    "/{media_id}/legal-hold",
+    summary="Poser ou lever une conservation légale (administration, justification obligatoire)",
+)
+async def set_legal_hold(
+    media_id: str, body: LegalHoldIn, request: Request, ctx: SensitiveAuth, db: Db
+) -> dict[str, Any]:
+    """Passe EXCLUSIVEMENT par la fonction contrôlée `nl_media_set_legal_hold` (0010) : l'API n'a aucun
+    droit d'écriture sur les colonnes de conservation. La base revérifie le droit, journalise l'acteur,
+    l'horodatage et le motif (journal en ajout seul). La conservation n'ouvre aucun accès : un média
+    infecté ou révoqué reste non diffusable. Aucune suppression automatique."""
+    mid = parse_uuid(media_id)
+    row = await _load(db, ctx, mid)
+    if not _can_hold(ctx, row["organization_id"]):
+        raise media_problem(
+            403, "forbidden", "Conservation légale réservée à l'administration de la plateforme", "forbidden"
+        )
+    async with editorial_tx(db, ctx):
+        event = (
+            await db.execute(
+                text("SELECT nl_media_set_legal_hold(:m, :h, :r)"), {"m": mid, "h": body.hold, "r": body.reason}
+            )
+        ).scalar()
+        await record(
+            db,
+            request,
+            ctx,
+            "media.legal_hold_requested",
+            "media_asset",
+            mid,
+            row["organization_id"],
+            legal_hold=body.hold,
+            event_id=str(event),
+        )
+    return media_out(await _load(db, ctx, mid))
+
+
+@router.get("/{media_id}/legal-hold", summary="Historique des conservations légales (administration)")
+async def legal_hold_history(media_id: str, ctx: Auth, db: Db) -> list[dict[str, Any]]:
+    mid = parse_uuid(media_id)
+    row = await _load(db, ctx, mid)
+    if not _can_hold(ctx, row["organization_id"]):
+        raise media_problem(403, "forbidden", "Historique réservé à l'administration de la plateforme", "forbidden")
+    rows = await db.execute(
+        text(
+            "SELECT e.id, e.action, e.reason, e.actor_user_id, p.display_name AS actor_name, e.created_at "
+            "FROM media_legal_hold_events e LEFT JOIN profiles p ON p.user_id = e.actor_user_id "
+            "WHERE e.media_id = :m ORDER BY e.created_at, e.id"
+        ),
+        {"m": mid},
+    )
+    return [dict(r) for r in rows.mappings()]

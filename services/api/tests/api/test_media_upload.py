@@ -570,6 +570,8 @@ def test_nothing_is_ever_served(api: TestClient, mw: MWorld, sync_engine: Engine
         ("GET", f"{M}/{{media_id}}"),
         ("DELETE", f"{M}/{{media_id}}"),
         ("POST", f"{M}/{{media_id}}/revoke"),  # 2.2.3-d : révocation (aucun octet servi)
+        ("POST", f"{M}/{{media_id}}/legal-hold"),  # 2.2.3-e : conservation légale (administration)
+        ("GET", f"{M}/{{media_id}}/legal-hold"),
     }
     # L'API d'édition ne diffuse jamais : la diffusion est un service séparé (create_delivery_app, 2.2.3-d).
     assert not any("/api/v1/media" in p for p in paths)

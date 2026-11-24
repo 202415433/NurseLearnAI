@@ -77,6 +77,7 @@ MIGRATIONS = [
     "0007_secure_media_foundation",
     "0008_media_scanner_role",
     "0009_postgres_role_separation",
+    "0010_media_editorial_permissions",
 ]
 
 

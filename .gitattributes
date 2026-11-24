@@ -2,3 +2,6 @@
 *.ps1 text eol=crlf
 *.png binary
 *.jpg binary
+
+# 2.2.3-e : configuration ClamAV montée dans des conteneurs Linux (un CR final casserait les chemins).
+infra/clamav/*.conf text eol=lf

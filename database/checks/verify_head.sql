@@ -7,7 +7,7 @@ DECLARE
 BEGIN
   SELECT count(*) INTO n_tables FROM information_schema.tables
    WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'alembic_version';
-  IF n_tables <> 75 THEN RAISE EXCEPTION 'Attendu 75 tables (60 + 2 de 0004 + 4 de 0005 + 5 de 0006 + 4 de 0007), trouvé %', n_tables; END IF;
+  IF n_tables <> 76 THEN RAISE EXCEPTION 'Attendu 76 tables (60 + 2 de 0004 + 4 de 0005 + 5 de 0006 + 4 de 0007 + 1 de 0010), trouvé %', n_tables; END IF;
 
   SELECT count(*) INTO n_missing FROM unnest(ARRAY['users','roles','profiles','countries','jurisdictions','professions',
     'specialties','programs','modules','lessons','learning_objectives','competencies','learning_resources',
@@ -80,6 +80,20 @@ BEGIN
      OR has_schema_privilege('nl_api', 'public', 'CREATE')
      OR has_database_privilege('nl_api', current_database(), 'TEMPORARY') THEN
     RAISE EXCEPTION 'Migration 0009 (D14) non appliquée : propriétaires, rôles ou privilèges non conformes'; END IF;
+  -- 0010 (2.2.3-e) : rattachement et conservation légale par fonctions contrôlées seulement ; aucune
+  -- écriture directe de l'API sur lesson_version_media ni sur le journal des conservations.
+  IF NOT EXISTS (SELECT 1 FROM permissions WHERE code = 'media:legal_hold')
+     OR EXISTS (SELECT 1 FROM role_permissions rp JOIN roles r ON r.id = rp.role_id
+                 WHERE rp.permission_code = 'media:legal_hold' AND r.code <> 'admin')
+     OR to_regclass('public.media_legal_hold_events') IS NULL
+     OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_media_legal_hold_events_append_only')
+     OR has_table_privilege('nl_api', 'lesson_version_media', 'INSERT')
+     OR has_table_privilege('nl_api', 'lesson_version_media', 'DELETE')
+     OR has_table_privilege('nl_api', 'media_legal_hold_events', 'INSERT')
+     OR has_column_privilege('nl_api', 'media_assets', 'legal_hold', 'UPDATE')
+     OR NOT has_function_privilege('nl_api', 'nl_media_attach(uuid,uuid)', 'EXECUTE')
+     OR NOT has_function_privilege('nl_api', 'nl_media_set_legal_hold(uuid,boolean,text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Migration 0010 non appliquée (fonctions contrôlées, permission ou journal absents)'; END IF;
   SELECT count(*) INTO n_trg FROM pg_trigger WHERE NOT tgisinternal;
   SELECT count(*) INTO n_idx FROM pg_indexes WHERE schemaname = 'public';
 

@@ -253,7 +253,9 @@ services:
       FRESHCLAM_CHECKS: "12"               # 12 vérifications par jour
     volumes:
       - clamav-db:/var/lib/clamav          # signatures (volume dédié, jamais supprimé)
-      - clamav-sock:/run/clamav            # prévient clamd d'un rechargement
+      - clamav-sock:/run/clamav            # socket de clamd (volume dédié) : notification de rechargement
+      # 2.2.3-e : même clamd.conf que clamd (socket /run/clamav/clamd.sock) → NotifyClamd fonctionne.
+      - ./clamav/clamd.conf:/etc/clamav/clamd.conf:ro
     networks: [clamav-updates]
     mem_limit: 1g
     cpus: 0.5
@@ -272,13 +274,18 @@ services:
     depends_on:
       freshclam:
         condition: service_healthy
+    # 2.2.3-e : le volume du socket est créé par Docker au nom de root ; clamd abandonne ses droits
+    # (utilisateur clamav) AVANT de créer son socket. Le répertoire lui est donc attribué (0750) au
+    # démarrage, puis l'entrée standard de l'image (/init) prend le relais, inchangée.
+    entrypoint: ["/bin/sh", "-c", "chown clamav:clamav /run/clamav && chmod 0750 /run/clamav && exec /init"]
     environment:
       CLAMAV_NO_FRESHCLAMD: "true"
       CLAMAV_NO_MILTERD: "true"
       CLAMD_STARTUP_TIMEOUT: "1800"
     volumes:
       - clamav-db:/var/lib/clamav
-      - clamav-sock:/run/clamav
+      - clamav-sock:/run/clamav            # socket /run/clamav/clamd.sock (0660, clamav)
+      - ./clamav/clamd.conf:/etc/clamav/clamd.conf:ro
     networks: [media-scan]                  # réseau interne : ni Internet, ni base, ni stockage
     # Pic de mémoire au rechargement des signatures (deux jeux en mémoire) : ≈ 2 × 1,1 Go.
     mem_limit: 3g
