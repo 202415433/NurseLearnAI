@@ -331,7 +331,7 @@ jobs:
           # Profil « media » (2.2.3-c) : ClamAV et worker, absents de la pile par défaut.
           docker compose --profile media config -q
           docker compose --profile media config --services | sort | tr '\n' ' ' | tee /tmp/media
-          grep -q "clamd freshclam mailpit media-worker" /tmp/media
+          grep -q "clamd freshclam mailpit media-delivery media-worker" /tmp/media
           test -z "$(docker compose --profile media config | sed -n '/^  clamd:/,/^  [a-z-]*:$/p' | grep -E '^\s+ports:')"
       - name: docker compose up --build -d (attente de la santé)
         run: |
