@@ -27,3 +27,6 @@ backups/
 # Captures et résultats des parcours Playwright de validation (2.2.3-e) : preuves locales, hors Git
 docs/validation-logs/captures-*/
 apps/web/test-results/
+
+# Instantanés Redis locaux (outillage de test) : jamais versionnés
+dump.rdb
