@@ -201,7 +201,7 @@ $pyOut = (docker start -a $cid 2>&1 | Out-String)
 $pyCode = [int](docker inspect -f "{{.State.ExitCode}}" $cid)
 docker rm $cid 2>&1 | Out-Null
 Psql "DROP DATABASE IF EXISTS nl_validation_e1 WITH (FORCE)" "postgres" | Out-Null
-$lines = @($pyOut -split "`n" | Where-Object { $_ -match '::test_\S+ (PASSED|FAILED|SKIPPED|ERROR)' } | ForEach-Object { $_.Trim() })
+$lines = @($pyOut -split "`n" | Where-Object { $_ -match '^\S+::test_.+? (PASSED|FAILED|SKIPPED|ERROR|XFAIL|XPASS)(\s+\[|\s*$)' } | ForEach-Object { $_.Trim() })
 foreach ($l in ($pyOut -split "`n" | Where-Object { $_ -match '^=+ .*(passed|failed|error).* =+$' })) { Log "    $($l.Trim())" }
 foreach ($l in ($lines | Where-Object { $_ -notmatch 'PASSED' })) { Log "    $l" }
 # Deux processus pytest : les suites database/tests et services/api/tests importent
@@ -215,6 +215,7 @@ if ($pyCode -ne 0 -and $lines.Count -eq 0) {
         Log "    | $m"
     }
 }
+# Les identifiants paramétrés peuvent contenir des espaces (ex. [ClamAV 1.5.5]) : pas de \S+.
 function FileTests([string]$file) { @($lines | Where-Object { $_ -match [regex]::Escape($file) }) }
 function AllPassed([object[]]$set, [int]$min) { $set.Count -ge $min -and @($set | Where-Object { $_ -notmatch 'PASSED' }).Count -eq 0 }
 $sqlT = FileTests 'test_media_editorial_permissions.py'

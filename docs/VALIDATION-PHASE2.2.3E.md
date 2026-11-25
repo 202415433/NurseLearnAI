@@ -102,4 +102,11 @@ Correctif (commit séparé, périmètre E1, aucune exigence affaiblie) :
 
 Vérification locale du correctif : base 60/60, API 91 réussis + 1 ignoré (ClamAV réel absent du conteneur).
 
-*Second passage Windows : à compléter.*
+**Second passage Windows (2026-11-24, `38618c3`) : 31/32.** Non-régression complète verte (2.2.3-d 30/30,
+R3 32/32, D14 et antérieures), pytest 150 tests, codes 0/0 (base / API), aucun échec ni saut. Seul échec :
+`tests_signatures_absentes_perimees` = 7 au lieu de 9 — défaut du filtre du script (`::test_\S+`), qui
+ignorait les deux identifiants paramétrés contenant une espace (`[ClamAV 1.5.5]`, `[ClamAV 1.5.5/]`) ; ces
+tests ont bien été exécutés et réussis (code pytest 0). Filtre corrigé (`^\S+::test_.+? (PASSED|…)`), seuil
+inchangé ; vérifié en local : 9 lignes reconnues sur 9.
+
+*Troisième passage Windows : à compléter.*
