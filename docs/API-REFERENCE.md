@@ -96,6 +96,15 @@ Préfixe `/api/v1/editorial`. Le détail figure dans [`VALIDATION-PHASE2.2.2B.md
 | Workflow | `POST /{kind}/{id}/submit|request-changes|approve|archive|abandon`, avec `kind` = `lesson-versions`, `module-versions` ou `releases` ; `GET /review-queue` ; `GET /{kind}/{id}/decisions` ; `GET /{kind}/{id}/diff?against={id}` |
 | Sources médicales | `GET`/`POST /references`, `POST /references/{id}/verify`, `POST /references/{id}/withdraw` (relecteur plateforme) |
 
+| Médias (2.2.3-b → e) | `POST /media` (réservation), `PUT /media/{id}/content` (flux brut), `GET /media` (`q`, `kind`, `state`, `include_deleted`, `limit`, `offset` ; total dans `X-Total-Count` ; `attachment_count`), `GET`/`DELETE /media/{id}`, `POST /media/{id}/revoke` (relecteurs plateforme, administration), `POST`/`GET /media/{id}/legal-hold` (permission `media:legal_hold` + administration, motif obligatoire, historique en ajout seul) |
+| Rattachement (2.2.3-e, 0010) | `GET /lesson-versions/{id}/media`, `PUT`/`DELETE /lesson-versions/{id}/media/{media_id}` (brouillon seulement, même portée ; fonctions contrôlées `nl_media_attach`/`nl_media_detach`) |
+| Quotas (2.2.3-e) | `GET /quotas/media` (lecture seule : utilisateur, établissements où l'on crée, catalogue public si autorisé) |
+
+**Diffusion (service séparé `media-delivery`, 2.2.3-d).** `GET /api/v1/media/{id}/content?release=&lesson_version=`
+(apprenant) et `GET /api/v1/media/{id}/preview` (aperçu éditorial) ; session à chaque requête, `Range` pour
+la vidéo. Le navigateur y accède **uniquement** par le relais Web de même origine `/relais/medias/…`
+(2.2.3-e) : aucun lien de stockage, aucun jeton autonome.
+
 **Erreurs.** Elles sont au format `application/problem+json` avec un champ `code` stable, par exemple
 `self_approval`, `not_draft`, `missing_source`, `source_unverified` ou `medical_publication_disabled`.
 Le texte SQL n'est jamais exposé.

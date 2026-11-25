@@ -205,7 +205,7 @@ Première exécution (`819a268`, 26/30) : les 27 tests de diffusion étaient dé
 |---|---|---|
 | D3-1 | Octets déjà transmis avant une révocation non récupérables | Revérification toutes les 10 s, plages ouvertes bornées à 8 Mio ; documenté |
 | D3-2 | La diffusion partage la connexion PostgreSQL `nl_api` (droits de lecture larges, R2) | Rôle dédié en lecture seule dans une migration future |
-| D3-3 | Rattachement et `legal_hold` sans route d'API (connexion d'administration) | Migration de privilèges dédiée (INSERT/DELETE `lesson_version_media`, UPDATE `legal_hold`) à autoriser |
+| D3-3 | Rattachement et `legal_hold` sans route d'API (connexion d'administration) | **Corrigé en 2.2.3-e** : migration 0010 (fonctions contrôlées `nl_media_attach`, `nl_media_detach`, `nl_media_set_legal_hold`, permission `media:legal_hold`, journal en ajout seul), routes et interfaces — [VALIDATION-PHASE2.2.3E.md](VALIDATION-PHASE2.2.3E.md) |
 | D3-4 | Pas de nouvelle analyse périodique des médias `clean` | À livrer (tâche planifiée du worker) ; la diffusion respecte déjà toute invalidation |
 | D3-5 | Limite par adresse partagée entre l'API et la diffusion | Ajuster `RATE_LIMIT_PER_MINUTE` ou séparer le sel en production |
 | D3-6 | Apprenants d'établissement sans accès aux contenus privés | Inscriptions (2.2.4) |

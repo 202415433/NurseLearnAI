@@ -133,11 +133,12 @@ if ($reg12) {
 # 3. Contrôles D14
 # -----------------------------------------------------------------------------
 $rev = Psql "SELECT version_num FROM alembic_version"
-Result "migration_0009_appliquee" ($rev -eq "0009_postgres_role_separation") $rev
+# 0009 ou une migration additive ultérieure (0010, 2.2.3-e) lorsque ce script est enchaîné.
+Result "migration_0009_appliquee" ($rev -match '^(0009|00[1-9][0-9])_') $rev
 $migrate = (docker compose ps -a migrate --format "{{.ExitCode}}" 2>$null | Select-Object -First 1)
 Result "migrations_par_le_conteneur_migrate" ("$migrate".Trim() -eq "0") "code de sortie=$migrate"
 $verify = (docker compose exec -T postgres psql -U $PGU -d $PGDB -X -q -v ON_ERROR_STOP=1 -f /database/checks/verify_head.sql 2>&1 | Out-String)
-Result "schema_tete_verifie_avec_d14" ($verify -match "OK : 75 tables") (($verify -split "`n" | Select-String "OK :|ERR|ERREUR|EXCEPTION") -join " ")
+Result "schema_tete_verifie_avec_d14" ($verify -match "OK : 7[56] tables") (($verify -split "`n" | Select-String "OK :|ERR|ERREUR|EXCEPTION") -join " ")
 
 $roles = Psql "SELECT string_agg(rolname || ':' || rolsuper || '/' || rolcreatedb || '/' || rolcreaterole || '/' || rolbypassrls || '/' || rolcanlogin, ' ' ORDER BY rolname) FROM pg_roles WHERE rolname IN ('nl_owner', 'nl_api', 'nl_media_scanner')"
 Result "roles_sans_privilege" ($roles -eq "nl_api:false/false/false/false/true nl_media_scanner:false/false/false/false/true nl_owner:false/false/false/false/false") $roles
@@ -146,7 +147,10 @@ Result "aucune_appartenance_de_role" ($members -eq "0") "appartenances=$members"
 $owners = Psql "SELECT (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relowner <> 'nl_owner'::regrole AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e')) || ' ' || (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proowner <> 'nl_owner'::regrole AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e')) || ' ' || (SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = 'public')"
 Result "tout_le_schema_appartient_a_nl_owner" ($owners -eq "0 0 nl_owner") "relations/fonctions hors nl_owner, propriétaire du schéma = $owners"
 $secdef = Psql "SELECT string_agg(p.proname || '=' || has_function_privilege('public', p.oid, 'EXECUTE') || '/' || (p.proconfig IS NOT NULL), ' ' ORDER BY p.proname) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.prosecdef"
-Result "security_definer_verrouillees" ($secdef -eq "nl_media_reserve=false/true nl_media_scanner_audit=false/true nl_media_scanner_identity=false/true nl_media_scanner_provision=false/true nl_media_usage_row=false/true") $secdef
+# Inventaire exact : 0009 seul, ou 0009 + les trois fonctions contrôlées de 0010 (2.2.3-e).
+$secdefD14 = "nl_media_reserve=false/true nl_media_scanner_audit=false/true nl_media_scanner_identity=false/true nl_media_scanner_provision=false/true nl_media_usage_row=false/true"
+$secdef0010 = "nl_media_attach=false/true nl_media_detach=false/true nl_media_reserve=false/true nl_media_scanner_audit=false/true nl_media_scanner_identity=false/true nl_media_scanner_provision=false/true nl_media_set_legal_hold=false/true nl_media_usage_row=false/true"
+Result "security_definer_verrouillees" ($secdef -ceq $secdefD14 -or ($secdef -ceq $secdef0010 -and $rev -match '^(0010|001[1-9]|00[2-9][0-9])_')) $secdef
 $privs = Psql "SELECT (SELECT count(*) FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'p', 'v') AND (has_table_privilege('nl_api', c.oid, 'TRUNCATE') OR has_table_privilege('nl_api', c.oid, 'TRIGGER') OR has_table_privilege('nl_api', c.oid, 'REFERENCES'))) || ' ' || has_schema_privilege('nl_api', 'public', 'CREATE') || ' ' || has_database_privilege('nl_api', current_database(), 'TEMPORARY') || ' ' || has_table_privilege('nl_api', 'media_scan_events', 'INSERT') || ' ' || has_table_privilege('nl_api', 'media_usage', 'UPDATE') || ' ' || has_table_privilege('nl_api', 'role_permissions', 'INSERT') || ' ' || has_table_privilege('nl_api', 'audit_logs', 'DELETE') || ' ' || has_column_privilege('nl_api', 'media_assets', 'clean_key', 'UPDATE')"
 Result "privileges_api_minimaux" ($privs -eq "0 false false false false false false false") "TRUNCATE/TRIGGER/REFERENCES, CREATE, TEMP, verdicts, quotas, permissions, audit, clean_key = $privs"
 
@@ -174,8 +178,9 @@ Result "aucun_programme_medical_publie" ($med -eq "0") "programmes médicaux pub
 $pilot = Psql "SELECT status FROM programs WHERE code = 'pab-qc-socle'"
 Result "pilote_pab_en_brouillon" ($pilot -eq "draft") $pilot
 $routes = (docker compose exec -T api python -c "from app.main import create_app; p = create_app().openapi()['paths']; print(sum(1 for k in p if k.startswith('/api/v1/editorial/media')))" 2>&1 | Out-String).Trim()
-# 2.2.3-d : la révocation (/revoke) s'ajoute ; la diffusion est un service séparé, hors de l'API.
-Result "aucune_route_de_diffusion_ajoutee" ($routes -eq "4") "chemins médias=$routes"
+# 2.2.3-d : révocation (/revoke) ; 2.2.3-e : conservation légale (/legal-hold). La diffusion reste un
+# service séparé, hors de l'API (aucun chemin /content en lecture : vérifié par les scripts 2.2.3-b/c).
+Result "aucune_route_de_diffusion_ajoutee" ($routes -eq "5") "chemins médias=$routes"
 
 Log ""; Log "================ SYNTHÈSE D14 ================"
 $fail = 0

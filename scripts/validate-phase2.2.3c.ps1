@@ -85,9 +85,9 @@ if (-not $reg) {
     Result "non_regression_2_2_3b_et_anterieures" ($fails -eq 0) "$($summary.Line) — journal $($reg.Name)"
 }
 $rev = Psql "SELECT version_num FROM alembic_version"
-Result "migration_0008_appliquee" ($rev -match '^000[89]_') $rev
+Result "migration_0008_appliquee" ($rev -match '^(000[89]|00[1-9][0-9])_') $rev
 $verify = (docker compose exec -T postgres psql -U $PGU -d $PGDB -X -q -v ON_ERROR_STOP=1 -f /database/checks/verify_head.sql 2>&1 | Out-String)
-Result "schema_tete_verifie" ($verify -match "OK : 75 tables") (($verify -split "`n" | Select-String "OK|ERR") -join " ")
+Result "schema_tete_verifie" ($verify -match "OK : 7[56] tables") (($verify -split "`n" | Select-String "OK|ERR") -join " ")
 
 # -----------------------------------------------------------------------------
 # 2. Profil « media » : freshclam, clamd, worker
@@ -202,7 +202,7 @@ Result "journal_analyses_ajout_seul" ($probe -match "ERROR|ERREUR" -and $guards 
 $probe = Psql "BEGIN; SELECT set_config('nl.role_grant_bypass', 'on', true); INSERT INTO user_roles (user_id, role_id) SELECT id, (SELECT id FROM roles WHERE code = 'media_scanner') FROM users WHERE id <> '00000000-0000-4000-a000-00000000c1a5' LIMIT 1; ROLLBACK;"
 Result "role_media_scanner_non_attribuable" ($probe -match "compte de service") "sonde annulée"
 $routes = (docker compose exec -T api python -c "from app.main import create_app; p = create_app().openapi()['paths']; print(sorted(f'{m.upper()} {k}' for k, v in p.items() if k.startswith('/api/v1/editorial/media') for m in v))" 2>&1 | Out-String).Trim()
-Result "aucune_route_de_diffusion" ($routes -eq "['DELETE /api/v1/editorial/media/{media_id}', 'GET /api/v1/editorial/media', 'GET /api/v1/editorial/media/{media_id}', 'POST /api/v1/editorial/media', 'POST /api/v1/editorial/media/{media_id}/revoke', 'PUT /api/v1/editorial/media/{media_id}/content']") $routes
+Result "aucune_route_de_diffusion" ($routes -eq "['DELETE /api/v1/editorial/media/{media_id}', 'GET /api/v1/editorial/media', 'GET /api/v1/editorial/media/{media_id}', 'GET /api/v1/editorial/media/{media_id}/legal-hold', 'POST /api/v1/editorial/media', 'POST /api/v1/editorial/media/{media_id}/legal-hold', 'POST /api/v1/editorial/media/{media_id}/revoke', 'PUT /api/v1/editorial/media/{media_id}/content']") $routes
 try { $r = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:9000/nl-media-clean/" -ErrorAction Stop; $code = [int]$r.StatusCode } catch { $code = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { -1 } }
 Result "stockage_sain_illisible_anonymement" ($code -eq 403 -or $code -eq 404) "statut $code"
 $med = Psql "SELECT count(*) FROM programs WHERE is_medical AND status = 'published'"

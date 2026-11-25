@@ -72,13 +72,14 @@ if ($reg12) {
 # -----------------------------------------------------------------------------
 $rev = Psql "SELECT version_num FROM alembic_version"
 # 0007 ou une migration additive ultérieure (0008, 2.2.3-c) lorsque ce script est enchaîné.
-Result "migration_0007_en_tete" ($rev -match '^000[7-9]_') $rev
+Result "migration_0007_en_tete" ($rev -match '^(000[7-9]|00[1-9][0-9])_') $rev
 $total = Psql "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'alembic_version'"
-Result "75_tables" ($total -eq "75") "tables=$total"
+# 0010 (2.2.3-e) ajoute media_legal_hold_events : au moins 75 tables.
+Result "au_moins_75_tables" ([int]"0$total" -ge 75) "tables=$total"
 $tables = Psql "SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('lesson_version_media','media_assets','media_scan_events','media_usage','learning_resources')"
 Result "quatre_tables_medias_et_learning_resources_conservee" ($tables -eq "learning_resources,lesson_version_media,media_assets,media_scan_events,media_usage") $tables
 $verify = (docker compose exec -T postgres psql -U $PGU -d $PGDB -X -q -v ON_ERROR_STOP=1 -f /database/checks/verify_head.sql 2>&1 | ForEach-Object { "$_" }) -join " "
-Result "schema_tete_verifie" ($verify -match "OK : 75 tables") $verify
+Result "schema_tete_verifie" ($verify -match "OK : 7[56] tables") $verify
 $scan = Psql "SELECT count(*) FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE rp.permission_code = 'media:scan' AND r.code <> 'media_scanner'"
 Result "aucun_role_ne_detient_media_scan" ($scan -eq "0") "rôles hors media_scanner=$scan"
 # Depuis 2.2.3-c, un média peut être sain : jamais sans verdict « clean » traçable (même tentative, mêmes octets).

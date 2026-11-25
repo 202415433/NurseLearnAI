@@ -158,7 +158,7 @@ if (-not $reg) {
 # 5. Contrôles Phase 2.1 sur la pile démarrée
 # -----------------------------------------------------------------------------
 $rev = (Psql "SELECT version_num FROM alembic_version") -join ""
-Result "migration_0004_identity_appliquee" ($rev -match '^000[4-9]_') $rev
+Result "migration_0004_identity_appliquee" ($rev -match '^(000[4-9]|00[1-9][0-9])_') $rev
 $r = Run "Vérification du schéma (database/checks/verify_head.sql)" {
     Get-Content "$root\database\checks\verify_head.sql" -Raw | docker compose exec -T postgres psql -U $PGU -d $PGDB -X -q -v ON_ERROR_STOP=1
 }

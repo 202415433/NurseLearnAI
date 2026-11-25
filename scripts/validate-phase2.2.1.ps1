@@ -69,7 +69,7 @@ if ($reg12) {
 # 2. Contrôles du sous-lot 2.2.1 (base de développement)
 # -----------------------------------------------------------------------------
 $rev = Psql "SELECT version_num FROM alembic_version"
-Result "migration_0005_appliquee" ($rev -match '^000[5-9]_') $rev
+Result "migration_0005_appliquee" ($rev -match '^(000[5-9]|00[1-9][0-9])_') $rev
 $tables = Psql "SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_name IN ('program_releases','enrollments','learning_events','editorial_decisions')"
 Result "quatre_nouvelles_tables" ($tables -eq "editorial_decisions,enrollments,learning_events,program_releases") $tables
 $check = Psql "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'ck_lesson_versions_status'"

@@ -203,7 +203,7 @@ do { Start-Sleep -Seconds 3; $ready = Http "$api/ready" } while ($ready.Status -
 $after = (Psql $PGDB "SELECT count(*) FROM professions") | Select-Object -First 1
 Result "persistance_apres_redemarrage" ($ready.Status -eq 200 -and "$after" -eq "$before" -and "$after" -ne "") "avant=$before après=$after"
 $rev = Psql $PGDB "SELECT version_num FROM alembic_version"
-Result "migrations_a_jour" ("$rev" -match '^000[3-9]_') "$rev"
+Result "migrations_a_jour" ("$rev" -match '^(000[3-9]|00[1-9][0-9])_') "$rev"
 
 # -----------------------------------------------------------------------------
 # 6. Tests automatisés

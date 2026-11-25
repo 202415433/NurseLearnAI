@@ -93,10 +93,12 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Les ressources statiques et le préchargement de route n'ont pas besoin de nonce.
+  // Les ressources statiques et le préchargement de route n'ont pas besoin de nonce. Le relais des
+  // médias (/relais/…, 2.2.3-e) n'a ni langue ni page : il pose ses propres en-têtes et revérifie la
+  // session à chaque requête (aucune redirection de langue, aucun rafraîchissement implicite).
   matcher: [
     {
-      source: "/((?!_next/static|_next/image|favicon.svg|.*\\..*).*)",
+      source: "/((?!_next/static|_next/image|relais/|favicon.svg|.*\\..*).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

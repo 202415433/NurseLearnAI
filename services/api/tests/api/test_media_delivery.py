@@ -180,15 +180,10 @@ def clean_media(api: TestClient, worker: Any, who: Acct, kind: str, mime: str, d
     return mid
 
 
-def attach(engine: Engine, actor: str, lv: str, media: str) -> None:
-    """Rattachement d'un média à un BROUILLON (aucune route d'API en 2.2.3-d : connexion d'administration,
-    acteur déclaré ; la base vérifie le droit, l'état brouillon, la portée et l'état du média)."""
-    with engine.begin() as c:
-        c.execute(text("SELECT set_config('nl.actor_id', :a, true)"), {"a": actor})
-        c.execute(
-            text("INSERT INTO lesson_version_media (lesson_version_id, media_id, attached_by) VALUES (:l, :m, :a)"),
-            {"l": lv, "m": media, "a": actor},
-        )
+def attach(api: TestClient, author: Acct, lv: str, media: str) -> None:
+    """Rattachement d'un média à un BROUILLON par l'API (2.2.3-e, D3-3 : fonction contrôlée nl_media_attach)."""
+    r = api.put(f"{E}/lesson-versions/{lv}/media/{media}", headers=author.h)
+    assert r.status_code in (200, 201), r.text
 
 
 PUBLISHED: list[tuple[str, Acct]] = []  # éditions publiées par ce module, archivées à la fin
@@ -219,7 +214,7 @@ def publish_with_media(
     les = new_lesson(api, author, mod["id"])
     lv = ok(new_version(api, author, les["id"]), 201)["id"]
     for m in media:
-        attach(engine, author.user_id, lv, m)
+        attach(api, author, lv, m)
     ok(submit(api, author, "lesson-versions", lv))
     ok(approve(api, reviewer, "lesson-versions", lv))
     items = [{"lesson_id": les["id"], "position": 0, "versions": {"fr": lv}}]
@@ -509,8 +504,8 @@ def test_infected_and_unscanned_media_are_never_served(
         assert r.status_code == 404 and b"EICAR" not in r.content
     # Un média non sain ne peut même pas être rattaché à une leçon (donc jamais publié).
     lv = ok(new_version(api, w.author, new_lesson(api, w.author, new_module(api, w, w.author)["id"])["id"]), 201)["id"]
-    with pytest.raises(Exception, match="nl:media_not_clean|non rattachable"):
-        attach(sync_engine, w.author.user_id, lv, infected)
+    r = api.put(f"{E}/lesson-versions/{lv}/media/{infected}", headers=w.author.h)
+    assert r.status_code == 422 and r.json()["code"] == "media_not_clean"
 
 
 def test_revoked_media_and_invalidated_verdict(
@@ -754,15 +749,18 @@ def test_legal_hold_blocks_deletion_and_never_grants_access(
                 text("UPDATE media_assets SET legal_hold = false, legal_hold_reason = NULL WHERE id = :i"), {"i": mid}
             )
         eng.dispose()
-    assert media_legal_hold(mid, admin.email, None, True, url=url) == 0
+    assert media_legal_hold(mid, admin.email, None, True, url=url) == 2  # levée : justification obligatoire
+    assert media_legal_hold(mid, admin.email, "Fin d'enquête fictive (test)", True, url=url) == 0
     assert (
         sql(
             sync_engine,
-            "SELECT count(*) FROM audit_logs WHERE entity_id = :m AND action LIKE 'media.legal_hold%'",
+            "SELECT count(*) FROM audit_logs WHERE entity_id = :m AND action IN "
+            "('media.legal_hold_set', 'media.legal_hold_released')",
             m=mid,
         ).scalar()
         == 2
     )
+    assert sql(sync_engine, "SELECT count(*) FROM media_legal_hold_events WHERE media_id = :m", m=mid).scalar() == 2
     assert api.delete(f"{M}/{mid}", headers=w.author.h).status_code == 204
 
 

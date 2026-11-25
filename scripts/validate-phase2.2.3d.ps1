@@ -51,10 +51,11 @@ function HttpCode([string]$uri, [hashtable]$headers = @{}) {
 Log "NurseLearn AI — validation 2.2.3-d (diffusion sécurisée des médias) — $(Get-Date -Format o)"
 $branch = git branch --show-current 2>$null
 Log "Git : $branch @ $(git rev-parse --short HEAD 2>$null)"
-Result "branche_2_2_3d" ($branch -like "phase-2.2.3d*") $branch
+Result "branche_2_2_3d" ($branch -like "phase-2.2.3[d-z]*") $branch
 $dirty = (git status --porcelain --untracked-files=no 2>$null | Where-Object { $_ -notmatch 'docs/validation-logs' }) -join " "
 Result "git_sans_modification_locale" ([string]::IsNullOrWhiteSpace($dirty)) $dirty
-$mig = (git diff --name-only origin/main...HEAD -- database/schema services/api/alembic/versions 2>$null) -join " "
+# 2.2.3-d n'ajoute aucune migration ; une étape ultérieure (0010, 2.2.3-e) peut en AJOUTER, jamais en modifier.
+$mig = (git diff --name-only $(if ($branch -like "phase-2.2.3d*") { "--diff-filter=ACMRD" } else { "--diff-filter=MD" }) origin/main...HEAD -- database/schema services/api/alembic/versions 2>$null) -join " "
 Result "aucune_migration_modifiee_ni_ajoutee" ([string]::IsNullOrWhiteSpace($mig)) $mig
 Result "fichiers_2_2_3d_presents" ((Test-Path "$root\services\api\app\domains\media\delivery.py") -and (Test-Path "$root\services\api\tests\api\test_media_delivery.py") -and (Test-Path "$root\services\api\app\ops\media_retention.py")) ""
 
@@ -184,7 +185,7 @@ $cid = (docker create -v "${root}:/repo" -w /repo --network nurselearn_default `
     -e NL_TEST_CLAMD_HOST=clamd -e NL_TEST_CLAMD_PORT=3310 -e "NL_TEST_SCANNER_PASSWORD=$($envVars['MEDIA_SCANNER_DB_PASSWORD'])" `
     -e "API_DB_PASSWORD=$($envVars['API_DB_PASSWORD'])" -e "NL_TEST_API_PASSWORD=$($envVars['API_DB_PASSWORD'])" -e "NL_TEST_ADMIN_DATABASE_URL=postgresql+psycopg://${PGU}:${PGPW}@postgres:5432/nl_validation_d3" `
     -e NL_TEST_PGHOST=postgres -e NL_TEST_PGPORT=5432 -e NL_TEST_PGUSER=$PGU -e PGPASSWORD=$PGPW -e PYTHONDONTWRITEBYTECODE=1 `
-    python:3.12-slim sh -c "cd services/api && pip install -q --disable-pip-version-check --root-user-action=ignore -e '.[dev]' && alembic upgrade head && python -m app.seed && DATABASE_URL=postgresql+asyncpg://nl_api:$($envVars['API_DB_PASSWORD'])@postgres:5432/nl_validation_d3 python -m pytest -v -rs -p no:cacheprovider -p no:logging tests/api/test_media_delivery.py tests/api/test_media_scan.py tests/api/test_media_upload.py tests/api/test_s3_identities.py" 2>&1).Trim()
+    python:3.12-slim sh -c "cd services/api && pip install -q --disable-pip-version-check --root-user-action=ignore -e '.[dev]' && alembic upgrade head && python -m app.seed && DATABASE_URL=postgresql+asyncpg://nl_api:$($envVars['API_DB_PASSWORD'])@postgres:5432/nl_validation_d3 python -m pytest -v -rfEs -p no:cacheprovider -p no:logging tests/api/test_media_delivery.py tests/api/test_media_scan.py tests/api/test_media_upload.py tests/api/test_s3_identities.py" 2>&1).Trim()
 docker network connect nurselearn_media-scan $cid 2>&1 | Out-Null
 $pyOut = (docker start -a $cid 2>&1 | Out-String)
 $pyCode = [int](docker inspect -f "{{.State.ExitCode}}" $cid)
@@ -193,6 +194,9 @@ Psql "DROP DATABASE IF EXISTS nl_validation_d3 WITH (FORCE)" "postgres" | Out-Nu
 $lines = @($pyOut -split "`n" | Where-Object { $_ -match '::test_\S+ (PASSED|FAILED|SKIPPED|ERROR)' } | ForEach-Object { $_.Trim() })
 foreach ($l in ($lines | Where-Object { $_ -match 'test_media_delivery' })) { Log "    $l" }
 foreach ($l in ($pyOut -split "`n" | Where-Object { $_ -match '^=+ .*(passed|failed|error).* =+$' })) { Log "    $($l.Trim())" }
+# Cause d'un échec (résumé pytest et premières lignes d'assertion), sans secret : diagnostic seulement.
+foreach ($l in ($pyOut -split "`n" | Where-Object { $_ -match '^(FAILED|ERROR) \S+ - ' } | Select-Object -First 5)) { Log "      $($l.Trim())" }
+foreach ($l in ($pyOut -split "`n" | Where-Object { $_ -match '^E\s{2,}' } | Select-Object -First 12)) { Log "      $($l.TrimEnd())" }
 # Nom distinct de « group » (alias PowerShell de Group-Object, prioritaire sur les fonctions).
 function TestsLike([string]$pattern) { @($lines | Where-Object { $_ -match 'test_media_delivery' -and $_ -match $pattern }) }
 $dl = TestsLike '.'

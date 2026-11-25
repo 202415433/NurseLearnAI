@@ -70,7 +70,7 @@ if ($reg12) {
 # 2. Contrôles 2.2.2-c (lecture seule)
 # -----------------------------------------------------------------------------
 $rev = Psql "SELECT version_num FROM alembic_version"
-Result "migration_0006_ou_ulterieure" ($rev -match '^000[6-9]_') $rev
+Result "migration_0006_ou_ulterieure" ($rev -match '^(000[6-9]|00[1-9][0-9])_') $rev
 $total = Psql "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'alembic_version'"
 Result "au_moins_71_tables" ([int]"0$total" -ge 71) "tables=$total"
 $med = Psql "SELECT count(*) FROM programs WHERE is_medical AND status = 'published'"

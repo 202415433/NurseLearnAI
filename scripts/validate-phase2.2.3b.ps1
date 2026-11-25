@@ -90,7 +90,7 @@ if ($reg12) {
 # 2. Contrôles 2.2.3-b (lecture seule)
 # -----------------------------------------------------------------------------
 $rev = Psql "SELECT version_num FROM alembic_version"
-Result "migration_0007_toujours_en_tete" ($rev -match '^000[7-9]_') $rev
+Result "migration_0007_toujours_en_tete" ($rev -match '^(000[7-9]|00[1-9][0-9])_') $rev
 $scan = Psql "SELECT count(*) FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE rp.permission_code = 'media:scan' AND r.code <> 'media_scanner'"
 Result "aucun_role_ne_detient_media_scan" ($scan -eq "0") "rôles hors media_scanner=$scan"
 $clean = Psql "SELECT count(*) FROM media_assets m WHERE m.state = 'clean' AND NOT EXISTS (SELECT 1 FROM media_scan_events e WHERE e.media_id = m.id AND e.attempt = m.scan_attempt AND e.result = 'clean' AND e.sha256 = m.sha256)"
@@ -106,7 +106,7 @@ $cfg = ApiPy "from app.core.config import get_settings as g; s=g(); print(bool(s
 Result "api_configuree_pour_stockage_prive" ($cfg -match "^True True True nl-media-quarantine$") ($cfg -replace '\s+', ' ')
 # Aucune route ne diffuse un contenu : inventaire exact des opérations médias (sans GET …/content).
 $routes = ApiPy "from app.main import create_app; p = create_app().openapi()['paths']; print(sorted(f'{m.upper()} {k}' for k, v in p.items() if k.startswith('/api/v1/editorial/media') for m in v))"
-$expected = "['DELETE /api/v1/editorial/media/{media_id}', 'GET /api/v1/editorial/media', 'GET /api/v1/editorial/media/{media_id}', 'POST /api/v1/editorial/media', 'POST /api/v1/editorial/media/{media_id}/revoke', 'PUT /api/v1/editorial/media/{media_id}/content']"
+$expected = "['DELETE /api/v1/editorial/media/{media_id}', 'GET /api/v1/editorial/media', 'GET /api/v1/editorial/media/{media_id}', 'GET /api/v1/editorial/media/{media_id}/legal-hold', 'POST /api/v1/editorial/media', 'POST /api/v1/editorial/media/{media_id}/legal-hold', 'POST /api/v1/editorial/media/{media_id}/revoke', 'PUT /api/v1/editorial/media/{media_id}/content']"
 Result "cinq_operations_aucune_diffusion" ($routes -eq $expected) $routes
 $deps = ApiPy "import importlib.metadata as m; print(m.version('pillow'), m.version('pypdf'), m.version('boto3'))"
 Result "bibliotheques_installees" ($deps -match "^13\.\d+\.\d+ 6\.\d+\.\d+ 1\.\d+") $deps

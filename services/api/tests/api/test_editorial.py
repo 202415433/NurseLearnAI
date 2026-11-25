@@ -319,7 +319,16 @@ def test_route_inventory_and_no_direct_publication(api: TestClient) -> None:
     ops = [
         (m.upper(), p) for p, item in paths.items() if p.startswith(E) and not p.startswith(f"{E}/media") for m in item
     ]
-    assert len(ops) == 37
+    # 37 en 2.2.2-b ; 2.2.3-e ajoute le rattachement des médias aux leçons (liste, rattacher, détacher)
+    # et la lecture des quotas de stockage (E2).
+    assert len(ops) == 41
+    assert ("GET", f"{E}/quotas/media") in ops
+    media_ops = sorted((m, p) for m, p in ops if "/lesson-versions/" in p and "/media" in p)
+    assert media_ops == [
+        ("DELETE", f"{E}/lesson-versions/{{version_id}}/media/{{media_id}}"),
+        ("GET", f"{E}/lesson-versions/{{version_id}}/media"),
+        ("PUT", f"{E}/lesson-versions/{{version_id}}/media/{{media_id}}"),
+    ]
     publishing = [p for _, p in ops if p.endswith("/publish")]
     assert publishing == [f"{E}/releases/{{release_id}}/publish"]  # aucune publication de leçon ou de module
 
@@ -1073,4 +1082,9 @@ def test_delete_never_removes_submitted_referenced_or_historical_data(
     deletable = sorted(
         p for p, item in paths.items() if p.startswith(E) and not p.startswith(f"{E}/media") and "delete" in item
     )
-    assert deletable == [f"{E}/lesson-versions/{{version_id}}", f"{E}/module-versions/{{version_id}}"]
+    assert deletable == [
+        f"{E}/lesson-versions/{{version_id}}",
+        # 2.2.3-e : détacher un média d'un BROUILLON (refusé par la base pour toute version figée).
+        f"{E}/lesson-versions/{{version_id}}/media/{{media_id}}",
+        f"{E}/module-versions/{{version_id}}",
+    ]

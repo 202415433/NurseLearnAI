@@ -2,7 +2,7 @@
 
     python -m app.cli grant-platform-admin <courriel>
     python -m app.cli create-organization <slug> "<nom>" [--kind school|hospital|care_home|employer|other]
-    python -m app.cli media-legal-hold <média> --by <courriel admin> (--reason "<motif>" | --release)
+    python -m app.cli media-legal-hold <média> --by <courriel admin> --reason "<motif>" [--release]
 
 `media-legal-hold` (2.2.3-d, S13) pose ou lève une obligation de conservation légale sur un média.
 L'administrateur désigné (permission user:manage) est l'acteur : la base vérifie son droit et
@@ -81,8 +81,11 @@ def create_organization(slug: str, name: str, kind: str) -> int:
 
 
 def media_legal_hold(media_id: str, by: str, reason: str | None, release: bool, url: str | None = None) -> int:
-    if release == (reason is not None):
-        print("Indiquer soit --reason (pose), soit --release (levée).", file=sys.stderr)
+    """Pose (défaut) ou lève (--release) une conservation légale ; justification obligatoire dans les
+    deux cas. Passe par la fonction contrôlée nl_media_set_legal_hold (0010) : droit de l'acteur,
+    journal en ajout seul (acteur, horodatage, motif) et audit, comme l'API d'administration."""
+    if reason is None or not 5 <= len(reason.strip()) <= 1000:
+        print('Justification obligatoire : --reason "<motif>" (5 à 1000 caractères).', file=sys.stderr)
         return 2
     with _conn(url) as conn, conn.cursor() as cur:
         cur.execute("SELECT id FROM users WHERE email = %s AND deleted_at IS NULL AND status = 'active'", (by.lower(),))
@@ -92,16 +95,10 @@ def media_legal_hold(media_id: str, by: str, reason: str | None, release: bool, 
             return 1
         cur.execute("SELECT set_config('nl.actor_id', %s, true)", (str(actor[0]),))
         try:
-            cur.execute(
-                "UPDATE media_assets SET legal_hold = %s, legal_hold_reason = %s WHERE id = %s RETURNING legal_hold",
-                (not release, None if release else reason, media_id),
-            )
+            cur.execute("SELECT nl_media_set_legal_hold(%s, %s, %s)", (media_id, not release, reason))
         except psycopg.Error as exc:
             conn.rollback()
             print(f"Refusé par la base : {exc.diag.message_primary}", file=sys.stderr)
-            return 1
-        if cur.fetchone() is None:
-            print("Média introuvable.", file=sys.stderr)
             return 1
         conn.commit()
     print("Conservation légale levée." if release else "Conservation légale posée.")

@@ -27,7 +27,7 @@ import uuid
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -118,6 +118,8 @@ def media_out(row: Any) -> dict[str, Any]:
         "captions_for": row["captions_for"],
         "reservation_expires_at": row["reservation_expires_at"],
         "deleted_at": row["deleted_at"],
+        "legal_hold": row["legal_hold"],  # motif réservé à l'historique d'administration (2.2.3-e)
+        "access_epoch": row["access_epoch"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -137,8 +139,11 @@ async def _rate_limited(request: Request, settings: Settings, ctx: AuthContext, 
     if redis is None:
         raise media_problem(503, "media_unavailable", "Service de téléversement indisponible", "service-unavailable")
     hour = int(time.time() // 3600)
-    checks = [(f"nl:media:rate:user:{ctx.user_id}:{hour}", settings.media_uploads_per_hour_user)]
-    checks.append((f"nl:media:rate:org:{org or 'platform'}:{hour}", settings.media_uploads_per_hour_org))
+    # Espace de noms dérivé de RATE_LIMIT_SALT (ou de la base) : deux piles partageant un Redis (tests,
+    # recette) ne consomment jamais les compteurs l'une de l'autre (même règle que la diffusion, 2.2.3-d).
+    ns = hashlib.sha256(settings.effective_rate_limit_salt.encode()).hexdigest()[:8]
+    checks = [(f"nl:media:rate:{ns}:user:{ctx.user_id}:{hour}", settings.media_uploads_per_hour_user)]
+    checks.append((f"nl:media:rate:{ns}:org:{org or 'platform'}:{hour}", settings.media_uploads_per_hour_org))
     try:
         async with redis.pipeline(transaction=True) as pipe:
             for key, _ in checks:
@@ -400,16 +405,59 @@ async def upload_content(
     return media_out(await _load(db, ctx, mid))
 
 
-@router.get("", summary="Médias de la portée (métadonnées, jamais les octets)")
-async def list_media(ctx: Auth, db: Db) -> list[dict[str, Any]]:
-    rows = await db.execute(
-        text(
-            "SELECT * FROM media_assets m WHERE (CAST(:scope_all AS boolean) "
-            "OR m.organization_id = ANY(CAST(:scope_orgs AS uuid[]))) ORDER BY m.created_at DESC, m.id LIMIT 500"
-        ),
-        scope_params(ctx),
-    )
-    return [media_out(r) for r in rows.mappings()]
+MEDIA_STATES = ("pending_upload", "quarantined", "scanning", "clean", "infected", "scan_failed", "revoked")
+MediaState = Literal["pending_upload", "quarantined", "scanning", "clean", "infected", "scan_failed", "revoked"]
+# Requête de liste : fragments statiques seulement ; les valeurs du client passent en paramètres liés.
+LIST_SQL = (
+    "SELECT __COLS__ FROM media_assets m "
+    "WHERE (CAST(:scope_all AS boolean) OR m.organization_id = ANY(CAST(:scope_orgs AS uuid[]))) "
+    "AND (CAST(:q AS text) IS NULL OR m.display_name ILIKE CAST(:q AS text) ESCAPE '\\') "
+    "AND (CAST(:kind AS text) IS NULL OR m.kind = CAST(:kind AS text)) "
+    "AND (CAST(:state AS text) IS NULL OR m.state = CAST(:state AS text)) "
+    "AND (CAST(:deleted AS boolean) OR m.deleted_at IS NULL)__TAIL__"
+)
+LIST_COUNT = LIST_SQL.replace("__COLS__", "count(*)").replace("__TAIL__", "")
+LIST_PAGE = LIST_SQL.replace(
+    "__COLS__", "m.*, (SELECT count(*) FROM lesson_version_media l WHERE l.media_id = m.id) AS attachment_count"
+).replace("__TAIL__", " ORDER BY m.created_at DESC, m.id LIMIT :limit OFFSET :offset")
+
+
+def like_pattern(q: str | None) -> str | None:
+    """Motif ILIKE littéral : les caractères spéciaux du client sont échappés (aucune injection de motif)."""
+    if not q or not q.strip():
+        return None
+    escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+@router.get("", summary="Médias de la portée (métadonnées, jamais les octets ; recherche et filtres 2.2.3-e)")
+async def list_media(
+    ctx: Auth,
+    db: Db,
+    response: Response,
+    q: Annotated[str | None, Query(max_length=100)] = None,
+    kind: Annotated[Literal["image", "video", "captions", "document"] | None, Query()] = None,
+    state: Annotated[MediaState | None, Query()] = None,
+    include_deleted: bool = True,
+    limit: Annotated[int, Query(ge=1, le=500)] = 500,
+    offset: Annotated[int, Query(ge=0, le=100000)] = 0,
+) -> list[dict[str, Any]]:
+    """Portée calculée côté serveur (jamais transmise par le client). Le total filtré est renvoyé dans
+    l'en-tête `X-Total-Count` ; `attachment_count` = nombre de versions de leçon qui rattachent le média.
+    Sans paramètre, comportement de 2.2.3-b (500 derniers, supprimés compris)."""
+    params: dict[str, Any] = {
+        **scope_params(ctx),
+        "q": like_pattern(q),
+        "kind": kind,
+        "state": state,
+        "deleted": include_deleted,
+        "limit": limit,
+        "offset": offset,
+    }
+    total = (await db.execute(text(LIST_COUNT), params)).scalar() or 0
+    rows = await db.execute(text(LIST_PAGE), params)
+    response.headers["X-Total-Count"] = str(total)
+    return [{**media_out(r), "attachment_count": r["attachment_count"]} for r in rows.mappings()]
 
 
 @router.get("/{media_id}", summary="Métadonnées et état d'un média")
@@ -486,3 +534,70 @@ async def revoke_media(
             access_epoch=epoch,
         )
     return media_out(await _load(db, ctx, mid))
+
+
+# --------------------------------------------------------------------------- conservation légale (2.2.3-e)
+class LegalHoldIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    hold: bool
+    reason: str = Field(min_length=5, max_length=1000)
+
+
+def _can_hold(ctx: AuthContext, org: uuid.UUID | None) -> bool:
+    # Permission dédiée (0010) dans la portée du média ET administration de la plateforme (0007).
+    return ctx.can("media:legal_hold", org) and ctx.can("user:manage", None)
+
+
+@router.post(
+    "/{media_id}/legal-hold",
+    summary="Poser ou lever une conservation légale (administration, justification obligatoire)",
+)
+async def set_legal_hold(
+    media_id: str, body: LegalHoldIn, request: Request, ctx: SensitiveAuth, db: Db
+) -> dict[str, Any]:
+    """Passe EXCLUSIVEMENT par la fonction contrôlée `nl_media_set_legal_hold` (0010) : l'API n'a aucun
+    droit d'écriture sur les colonnes de conservation. La base revérifie le droit, journalise l'acteur,
+    l'horodatage et le motif (journal en ajout seul). La conservation n'ouvre aucun accès : un média
+    infecté ou révoqué reste non diffusable. Aucune suppression automatique."""
+    mid = parse_uuid(media_id)
+    row = await _load(db, ctx, mid)
+    if not _can_hold(ctx, row["organization_id"]):
+        raise media_problem(
+            403, "forbidden", "Conservation légale réservée à l'administration de la plateforme", "forbidden"
+        )
+    async with editorial_tx(db, ctx):
+        event = (
+            await db.execute(
+                text("SELECT nl_media_set_legal_hold(:m, :h, :r)"), {"m": mid, "h": body.hold, "r": body.reason}
+            )
+        ).scalar()
+        await record(
+            db,
+            request,
+            ctx,
+            "media.legal_hold_requested",
+            "media_asset",
+            mid,
+            row["organization_id"],
+            legal_hold=body.hold,
+            event_id=str(event),
+        )
+    return media_out(await _load(db, ctx, mid))
+
+
+@router.get("/{media_id}/legal-hold", summary="Historique des conservations légales (administration)")
+async def legal_hold_history(media_id: str, ctx: Auth, db: Db) -> list[dict[str, Any]]:
+    mid = parse_uuid(media_id)
+    row = await _load(db, ctx, mid)
+    if not _can_hold(ctx, row["organization_id"]):
+        raise media_problem(403, "forbidden", "Historique réservé à l'administration de la plateforme", "forbidden")
+    rows = await db.execute(
+        text(
+            "SELECT e.id, e.action, e.reason, e.actor_user_id, p.display_name AS actor_name, e.created_at "
+            "FROM media_legal_hold_events e LEFT JOIN profiles p ON p.user_id = e.actor_user_id "
+            "WHERE e.media_id = :m ORDER BY e.created_at, e.id"
+        ),
+        {"m": mid},
+    )
+    return [dict(r) for r in rows.mappings()]
