@@ -376,6 +376,11 @@ if ($Stage -eq 'e3') {
         Result "sauvegarde_alteration_et_mauvaise_cle_refusees" ((-not $bkr.verification.tamper.ok) -and (-not $bkr.verification.'wrong-key'.ok) -and -not $bkr.verification.tamper.decrypted -and -not $bkr.verification.'wrong-key'.decrypted) "altération=$($bkr.verification.tamper.decrypted) mauvaise_clé=$($bkr.verification.'wrong-key'.decrypted)"
         Result "restauration_isolee_conforme" ([bool]$r.ok) "tables=$($r.tables_identiques) rattachements=$($r.rattachements_coherents) empreintes=$($r.empreintes_conformes) sains=$($r.objets_sains_presents) quarantaine=$($r.objets_quarantaine_presents) états=$($r.etats_antivirus_identiques) verdicts=$($r.verdicts_sains_tracables) D14=$($r.permissions_d14_conservees) verify_head=$($r.verify_head)"
         if (-not $r.ok -and $r.ecarts_objets) { Log "      écarts : $($r.ecarts_objets | ConvertTo-Json -Compress)" }
+        if (-not $r) { Log "      restauration : $($bkr.restauration_erreur)" }
+        if ($r -and $r.erreur) { Log "      restauration : $($r.erreur)" }
+        Log "      stockage de restauration : $($bkr.stockage_restauration) (prêt=$($bkr.stockage_restauration_pret))"
+        if ($bkr.journal_rustfs_tmpfs) { Log "      RustFS (tmpfs) : $($bkr.journal_rustfs_tmpfs)" }
+        if ($bkr.journal_rustfs) { Log "      RustFS : $($bkr.journal_rustfs)" }
         Result "restauration_sans_volume_reseau_interne" ([bool]$bkr.restauration_sans_volume -and $bkr.reseau_isole -and $bkr.base_de_travail_injoignable) "sans volume=$($bkr.restauration_sans_volume) réseau interne=$($bkr.reseau_isole) base de travail injoignable=$($bkr.base_de_travail_injoignable)"
         Result "base_de_travail_inchangee_aucun_volume" ([bool]$bkr.base_de_travail_inchangee -and $bkr.aucun_volume_cree_ni_supprime) "base=$($bkr.base_de_travail_inchangee) volumes=$($bkr.aucun_volume_cree_ni_supprime)"
     }

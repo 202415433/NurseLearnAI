@@ -44,7 +44,9 @@ TAG = uuid.uuid4().hex[:6]
 
 def call(method: str, path: str, token: str | None = None, body: object = None, raw: bytes | None = None) -> tuple:
     data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
-    req = urllib.request.Request(API + path, data=data, method=method)
+    # Adresse fixe de l'API interne (variable d'environnement du script de validation), jamais une
+    # adresse fournie par un utilisateur.
+    req = urllib.request.Request(API + path, data=data, method=method)  # noqa: S310
     req.add_header("Accept", "application/json")
     if body is not None:
         req.add_header("Content-Type", "application/json")
@@ -53,7 +55,7 @@ def call(method: str, path: str, token: str | None = None, body: object = None, 
     if token:
         req.add_header("Authorization", f"Bearer {token}")
     try:
-        with urllib.request.urlopen(req, timeout=120) as r:
+        with urllib.request.urlopen(req, timeout=120) as r:  # noqa: S310
             text = r.read().decode() or "{}"
             return r.status, json.loads(text)
     except urllib.error.HTTPError as e:
@@ -126,7 +128,8 @@ def account(tag: str, role: str, organization: str | None = None) -> dict:
             with c.transaction():
                 c.execute("SELECT set_config('nl.role_grant_bypass', 'on', true)")
                 c.execute(
-                    "INSERT INTO user_roles (user_id, role_id, organization_id) SELECT %s, id, %s FROM roles WHERE code = %s",
+                    "INSERT INTO user_roles (user_id, role_id, organization_id) "
+                    "SELECT %s, id, %s FROM roles WHERE code = %s",
                     (user_id, organization, role),
                 )
     token = must(call("POST", "/api/v1/auth/login", body={"email": email, "password": password}), 200)["session_token"]
@@ -163,7 +166,7 @@ def fixtures() -> None:
     )
     import imageio_ffmpeg
 
-    subprocess.run(
+    subprocess.run(  # noqa: S603 - binaire ffmpeg fourni par imageio-ffmpeg, arguments constants
         [
             imageio_ffmpeg.get_ffmpeg_exe(),
             "-hide_banner",
@@ -287,7 +290,8 @@ def planted_infected(token: str, user_id: str) -> str:
     with psycopg.connect(ADMIN, autocommit=True) as c, c.transaction():
         c.execute("SELECT set_config('nl.actor_id', %s, true)", (user_id,))
         c.execute(
-            "UPDATE media_assets SET state = 'quarantined', byte_size = %s, sha256 = %s, quarantine_key = %s WHERE id = %s",
+            "UPDATE media_assets SET state = 'quarantined', byte_size = %s, sha256 = %s, quarantine_key = %s "
+            "WHERE id = %s",
             (len(eicar), hashlib.sha256(eicar).hexdigest(), key, media["id"]),
         )
     r = redis.Redis.from_url(os.environ["REDIS_URL"])

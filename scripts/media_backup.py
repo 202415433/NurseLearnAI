@@ -19,6 +19,10 @@ Clé : BACKUP_ENCRYPTION_KEY (64 caractères hexadécimaux, .env local, jamais a
 Sortie : une ligne JSON par commande (aucun secret).
 """
 
+# Outils PostgreSQL (pg_dump, pg_dumpall, pg_restore, psql) lancés par leur nom dans l'image d'outillage,
+# avec des arguments constants ou des chemins internes au conteneur : aucune entrée utilisateur (S603, S607).
+# ruff: noqa: S603, S607
+
 from __future__ import annotations
 
 import argparse
@@ -411,6 +415,9 @@ def restore(args: argparse.Namespace) -> int:
             break
         except Exception:
             time.sleep(2)
+    else:
+        emit({"ok": False, "erreur": "stockage S3 de restauration injoignable (voir journal RustFS)"})
+        return 1
     buckets = {"quarantine": "restore-quarantine", "clean": "restore-clean"}
     for b in buckets.values():
         target.create_bucket(Bucket=b)
@@ -468,12 +475,14 @@ def restore(args: argparse.Namespace) -> int:
         checks["etats_antivirus_identiques"] = states == manifest["media_states"]
         # Chaque média sain : dernier verdict traçable « clean » de la tentative courante.
         untraced = conn.execute(
-            "SELECT count(*) FROM media_assets m WHERE m.state = 'clean' AND NOT EXISTS (SELECT 1 FROM media_scan_events e "
-            "WHERE e.media_id = m.id AND e.result = 'clean' AND e.sha256 = m.sha256)"
+            "SELECT count(*) FROM media_assets m WHERE m.state = 'clean' AND NOT EXISTS "
+            "(SELECT 1 FROM media_scan_events e WHERE e.media_id = m.id AND e.result = 'clean' "
+            "AND e.sha256 = m.sha256)"
         ).fetchone()[0]
         checks["verdicts_sains_tracables"] = untraced == 0
         orphans = conn.execute(
-            "SELECT count(*) FROM lesson_version_media l LEFT JOIN media_assets m ON m.id = l.media_id WHERE m.id IS NULL"
+            "SELECT count(*) FROM lesson_version_media l LEFT JOIN media_assets m ON m.id = l.media_id "
+            "WHERE m.id IS NULL"
         ).fetchone()[0]
         checks["rattachements_coherents"] = (
             orphans == 0 and c["lesson_version_media"] == manifest["counts"]["lesson_version_media"]
@@ -489,9 +498,8 @@ def restore(args: argparse.Namespace) -> int:
                     continue
                 got = restored_objects.get((kind, k))
                 if got is None:
-                    if kind == "clean" and m["state"] == "clean":
-                        missing.append(f"{kind}:{m['id']}")
-                    elif kind == "quarantine" and m["state"] in ("quarantined", "scanning", "clean"):
+                    required = ("clean",) if kind == "clean" else ("quarantined", "scanning", "clean")
+                    if m["state"] in required:
                         missing.append(f"{kind}:{m['id']}")
                     continue
                 if got[1] != m["sha256"] or got[0] != m["byte_size"]:
@@ -509,7 +517,8 @@ def restore(args: argparse.Namespace) -> int:
         )
         # Permissions (D14, 0010) : rôles sans privilège, aucune écriture directe de l'API.
         priv = conn.execute(
-            "SELECT (SELECT bool_or(rolsuper OR rolbypassrls) FROM pg_roles WHERE rolname IN ('nl_api','nl_media_scanner','nl_owner')), "
+            "SELECT (SELECT bool_or(rolsuper OR rolbypassrls) FROM pg_roles "
+            "WHERE rolname IN ('nl_api','nl_media_scanner','nl_owner')), "
             "has_table_privilege('nl_api','lesson_version_media','INSERT'), "
             "has_column_privilege('nl_api','media_assets','legal_hold','UPDATE'), "
             "has_function_privilege('nl_api','nl_media_attach(uuid,uuid)','EXECUTE'), "
@@ -520,7 +529,8 @@ def restore(args: argparse.Namespace) -> int:
         checks["proprietaire_nl_owner"] = priv[4] == 0
         checks["roles_sans_mot_de_passe"] = (
             conn.execute(
-                "SELECT count(*) FROM pg_authid WHERE rolname IN ('nl_api','nl_media_scanner') AND rolpassword IS NOT NULL"
+                "SELECT count(*) FROM pg_authid WHERE rolname IN ('nl_api','nl_media_scanner') "
+                "AND rolpassword IS NOT NULL"
             ).fetchone()[0]
             == 0
         )

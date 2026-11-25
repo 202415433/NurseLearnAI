@@ -82,7 +82,30 @@ $net = "nl-restore-$stamp"; $pg = "nl-restore-pg-$stamp"; $s3 = "nl-restore-s3-$
 $rpw = Hex 16; $rsk = Hex 16
 docker network create --internal $net 2>&1 | Out-Null
 docker run -d --name $pg --network $net --tmpfs /var/lib/postgresql/data:size=2g -e POSTGRES_USER=nl_restore -e POSTGRES_PASSWORD=$rpw pgvector/pgvector:pg16 2>&1 | Out-Null
-docker run -d --name $s3 --network $net --tmpfs /data:size=4g -e RUSTFS_ACCESS_KEY=nl-restore -e RUSTFS_SECRET_KEY=$rsk -e RUSTFS_VOLUMES=/data -e RUSTFS_ADDRESS=0.0.0.0:9000 rustfs/rustfs:1.0.0 2>&1 | Out-Null
+# RustFS jetable : d'abord en mémoire (tmpfs) ; s'il ne devient pas prêt (RustFS s'exécute en utilisateur
+# 10001 et peut exiger des écritures directes que tmpfs n'offre pas), relance sur la couche d'écriture du
+# conteneur — aucun volume dans les deux cas, données détruites avec le conteneur. Journaux conservés.
+function StartS3([bool]$inMemory) {
+    docker rm -f $s3 2>&1 | Out-Null
+    $storage = @(); if ($inMemory) { $storage = @("--tmpfs", "/data:size=4g,mode=1777") }
+    docker run -d --name $s3 --network $net @storage -e RUSTFS_ACCESS_KEY=nl-restore -e RUSTFS_SECRET_KEY=$rsk -e RUSTFS_VOLUMES=/data -e RUSTFS_ADDRESS=0.0.0.0:9000 rustfs/rustfs:1.0.0 2>&1 | Out-Null
+    for ($j = 0; $j -lt 45; $j++) {
+        docker exec $s3 curl -fsS http://127.0.0.1:9000/health/ready 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { return $true }
+        if ((docker inspect -f "{{.State.Running}}" $s3 2>$null) -ne "true") { break }
+        Start-Sleep 2
+    }
+    return $false
+}
+$s3Ready = StartS3 $true
+$result.stockage_restauration = "tmpfs"
+if (-not $s3Ready) {
+    $result.journal_rustfs_tmpfs = ((docker logs --tail 15 $s3 2>&1 | ForEach-Object { "$_" }) -join " | ")
+    $s3Ready = StartS3 $false
+    $result.stockage_restauration = "couche du conteneur (sans volume)"
+}
+$result.stockage_restauration_pret = $s3Ready
+if (-not $s3Ready) { $result.journal_rustfs = ((docker logs --tail 25 $s3 2>&1 | ForEach-Object { "$_" }) -join " | ") }
 # Écoute TCP exigée : pendant l'initialisation, l'image démarre un serveur temporaire sur socket local seulement.
 for ($i = 0; $i -lt 90; $i++) { docker exec $pg pg_isready -h 127.0.0.1 -U nl_restore -q 2>$null; if ($LASTEXITCODE -eq 0) { break }; Start-Sleep 2 }
 Start-Sleep 2

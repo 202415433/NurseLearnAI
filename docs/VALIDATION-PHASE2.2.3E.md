@@ -312,7 +312,27 @@ powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.3e.ps1 -Sta
   PowerShell, le script n'a pas démarré. Corrigé ; attente de l'écoute TCP du PostgreSQL jetable
   (l'image démarre d'abord un serveur temporaire sur socket local).
 
-*Second passage Windows E3 : à compléter.*
+**Second passage Windows E3 (2026-11-25, `deb0e5d`) : 81/83.** Réseau Docker rétabli (`docker pull`
+préalable réussi).
+
+- **24/24 parcours Playwright**, 14 captures ; E1 et E2 verts ; FreshClam : notification réelle observée.
+- **Sauvegarde** : archive chiffrée de 76,6 Mio (12 objets de quarantaine, 10 sains, 26 médias,
+  2 rattachements), hors Git, clé absente du manifeste ; intégrité vérifiée (25 membres) ; **altération
+  et mauvaise clé refusées** ; aucun volume créé ni supprimé ; base de travail inchangée et injoignable
+  depuis le réseau isolé.
+- Chaîne 2.2.3-d : le test de diffusion du premier passage a réussi (27/27).
+- `restauration_isolee_conforme` : **FAIL** — le RustFS jetable n'est jamais devenu joignable
+  (`EndpointConnectionError`). Il était placé sur un tmpfs ; RustFS s'exécute en utilisateur 10001 et
+  ses guides n'emploient que des disques réels. Corrigé : attente de `/health/ready`, journal RustFS
+  conservé, et, s'il ne démarre pas en mémoire, relance sur la couche d'écriture du conteneur (toujours
+  sans volume, détruite avec le conteneur) ; l'outil échoue désormais immédiatement avec un message clair
+  si le stockage reste injoignable.
+- `python_ruff_mypy` (chaîne 2.1) : **FAIL, défaut de mes scripts** — Ruff y vérifie tout le dépôt ;
+  `scripts/media_backup.py` et `scripts/e2e_media_setup.py` présentaient 18 écarts (longueur de ligne,
+  appels de processus et d'URL sans justification). Corrigés (justifications explicites :
+  binaires fixes, adresse interne fixe) ; `ruff check .` et `ruff format --check .` verts sur le dépôt.
+
+*Troisième passage Windows E3 : à compléter.*
 
 ## 8. Registre des risques résiduels (2.2.3-e)
 
