@@ -5,9 +5,11 @@ import { notFound } from "next/navigation";
 import { Suspense, type ReactNode } from "react";
 
 import { AccountLink } from "@/components/AccountLink";
+import { EditionLink } from "@/components/EditionLink";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { getDictionary, isLocale } from "@/lib/i18n";
+import { getMediaDictionary } from "@/lib/i18n-media";
 
 import "../globals.css";
 
@@ -47,15 +49,18 @@ export default async function LocaleLayout({
           {t.a11y.skip}
         </a>
         <header className="border-b border-border bg-surface-raised">
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
+          <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3">
             <Link href={`/${locale}`} className="text-lg font-bold text-primary">
               NurseLearn <span className="text-accent">AI</span>
             </Link>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Suspense fallback={null}>
                 <LanguageSwitcher locale={locale} label={t.a11y.language} />
               </Suspense>
               <ThemeToggle labels={t.theme} />
+              <Suspense fallback={null}>
+                <EditionLink locale={locale} label={getMediaDictionary(locale).nav.edition} />
+              </Suspense>
               <Suspense fallback={null}>
                 <AccountLink locale={locale} labels={t.auth.nav} />
               </Suspense>

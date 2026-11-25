@@ -319,9 +319,11 @@ def test_route_inventory_and_no_direct_publication(api: TestClient) -> None:
     ops = [
         (m.upper(), p) for p, item in paths.items() if p.startswith(E) and not p.startswith(f"{E}/media") for m in item
     ]
-    # 37 en 2.2.2-b ; 2.2.3-e ajoute le rattachement des médias aux leçons (liste, rattacher, détacher).
-    assert len(ops) == 40
-    media_ops = sorted((m, p) for m, p in ops if p.endswith("/media") or p.endswith("/media/{media_id}"))
+    # 37 en 2.2.2-b ; 2.2.3-e ajoute le rattachement des médias aux leçons (liste, rattacher, détacher)
+    # et la lecture des quotas de stockage (E2).
+    assert len(ops) == 41
+    assert ("GET", f"{E}/quotas/media") in ops
+    media_ops = sorted((m, p) for m, p in ops if "/lesson-versions/" in p and "/media" in p)
     assert media_ops == [
         ("DELETE", f"{E}/lesson-versions/{{version_id}}/media/{{media_id}}"),
         ("GET", f"{E}/lesson-versions/{{version_id}}/media"),

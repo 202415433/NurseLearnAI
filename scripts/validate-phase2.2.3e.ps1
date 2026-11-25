@@ -15,9 +15,17 @@
 # 5. pytest sur la pile réelle : SQL adversariaux 0010, D14, rattachement, conservation légale,
 #    éditions figées, ClamAV réel et EICAR, signatures absentes/périmées, diffusion, édition ;
 # 6. intégrité : aucun volume, aucune donnée, aucun objet perdu ; aucune publication médicale.
+#
+# -Stage e2 (interfaces et relais Web) : tout e1, plus
+# 7. API : inventaire (lecture des quotas ajoutée, aucune route de diffusion dans l'API d'édition) ;
+#    tests de la bibliothèque (recherche, filtres, pagination, isolation) et des quotas ;
+# 8. relais Web (sonde dans le conteneur web) : destination fixe, 401 sans session, 404 identifiant ou
+#    contexte invalide, 403 intersite et CSRF, aucune mise en cache, aucun cookie, aucune fuite ;
+# 9. Web (conteneur node:22) : typecheck, lint, format, Vitest, build, aucun secret ni adresse interne
+#    dans le JavaScript envoyé au navigateur.
 # Ne supprime aucun volume ni aucune donnée. Journal : docs\validation-logs\phase2.2.3e-<date>.log
 # =============================================================================
-param([ValidateSet('e1')][string]$Stage = 'e1')
+param([ValidateSet('e1', 'e2')][string]$Stage = 'e1')
 $ErrorActionPreference = "Continue"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 # Sans BOM : la sonde S3 est transmise à Python par l'entrée standard des conteneurs.
@@ -62,6 +70,9 @@ $hist = (git diff --diff-filter=MD --name-only origin/main...HEAD -- database/sc
 Result "migrations_historiques_inchangees" ([string]::IsNullOrWhiteSpace($hist)) $hist
 $added = (git diff --diff-filter=A --name-only origin/main...HEAD -- database/schema services/api/alembic/versions 2>$null) -join " "
 Result "seule_migration_ajoutee_0010" ($added -eq "database/schema/0010_media_editorial_permissions.sql database/schema/0010_media_editorial_permissions_down.sql services/api/alembic/versions/0010_media_editorial_permissions.py") $added
+if ($Stage -eq 'e2') {
+    Result "fichiers_e2_presents" ((Test-Path "$root\apps\web\lib\media-relay.ts") -and (Test-Path "$root\apps\web\app\relais\medias\[id]\apercu\route.ts") -and (Test-Path "$root\apps\web\components\media\MediaUploader.tsx") -and (Test-Path "$root\services\api\app\domains\media\quotas.py") -and (Test-Path "$root\scripts\web_relay_probe.mjs")) ""
+}
 Result "fichiers_e1_presents" ((Test-Path "$root\services\api\app\domains\media\attachments.py") -and (Test-Path "$root\infra\clamav\clamd.conf") -and (Test-Path "$root\database\tests\test_media_editorial_permissions.py") -and (Test-Path "$root\services\api\tests\api\test_media_attachments.py")) ""
 
 # -----------------------------------------------------------------------------
@@ -239,6 +250,54 @@ Result "tests_diffusion_non_regression" (AllPassed $dlT 27) "$($dlT.Count) tests
 $edT = FileTests 'test_editorial.py'
 Result "tests_editoriaux_non_regression" (AllPassed $edT 20) "$($edT.Count) tests"
 Result "pytest_e1_sans_echec" ($pyCode -eq 0 -and @($lines | Where-Object { $_ -notmatch 'PASSED' }).Count -eq 0) "code=$pyCode ; $($lines.Count) tests"
+if ($Stage -eq 'e2') {
+    $libT = @($lines | Where-Object { $_ -match 'test_library_|test_media_quotas' })
+    Result "tests_bibliotheque_quotas_api" (AllPassed $libT 3) "$($libT.Count) tests (recherche, filtres, pagination, isolation, quotas)"
+}
+
+# -----------------------------------------------------------------------------
+# 7-9. E2 — API, relais Web, interfaces (Vitest, build, absence de secret côté navigateur)
+# -----------------------------------------------------------------------------
+if ($Stage -eq 'e2') {
+    Log ""; Log ">>> E2 : API (inventaire), relais Web, interfaces"
+    docker compose up -d --wait web 2>&1 | Out-Null
+    $inv = (docker compose exec -T api python -c "from app.main import create_app; p = create_app().openapi()['paths']; e = [(m, k) for k, v in p.items() if k.startswith('/api/v1/editorial') and not k.startswith('/api/v1/editorial/media') for m in v]; med = [(m, k) for k, v in p.items() if k.startswith('/api/v1/editorial/media') for m in v]; print(len(e), len(med), '/api/v1/editorial/quotas/media' in p, any('/api/v1/media' in k for k in p))" 2>&1 | Out-String).Trim()
+    Result "api_quotas_lecture_seule_aucune_diffusion" ($inv -eq "41 8 True False") "opérations éditoriales, opérations médias, quotas, diffusion dans l'API = $inv"
+    $dest = (docker compose exec -T web printenv MEDIA_DELIVERY_INTERNAL_URL 2>&1 | Out-String).Trim()
+    Result "relais_destination_fixe" ($dest -eq "http://media-delivery:8000") $dest
+    $probeOut = (Get-Content "$root\scripts\web_relay_probe.mjs" -Raw | docker compose exec -T web node - 2>&1 | Out-String)
+    $p = Json $probeOut
+    if (-not $p) {
+        Result "relais_sonde_executee" $false (($probeOut -split "`n" | Select-Object -Last 5) -join " ")
+    } else {
+        Result "relais_sans_session_401" ($p.anonyme_apercu.status -eq 401 -and $p.anonyme_diffusion.status -eq 401 -and $p.session_invalide.status -eq 401) "anonyme=$($p.anonyme_apercu.status)/$($p.anonyme_diffusion.status) session_invalide=$($p.session_invalide.status)"
+        Result "relais_identifiant_contexte_invalides_404" ($p.identifiant_invalide.status -eq 404 -and $p.contexte_manquant.status -eq 404) "identifiant=$($p.identifiant_invalide.status) contexte=$($p.contexte_manquant.status)"
+        Result "relais_intersite_refuse_403" ($p.intersite.status -eq 403 -and $p.origine_etrangere.status -eq 403) "intersite=$($p.intersite.status) origine=$($p.origine_etrangere.status)"
+        Result "relais_csrf_mutations_403" ($p.csrf_reservation.status -eq 403 -and $p.csrf_televersement.status -eq 403 -and $p.methode_interdite.status -eq 405) "réservation=$($p.csrf_reservation.status) téléversement=$($p.csrf_televersement.status) POST lecture=$($p.methode_interdite.status)"
+        $bad = @()
+        foreach ($prop in $p.PSObject.Properties) {
+            $v = $prop.Value
+            if ($v -is [System.Management.Automation.PSCustomObject] -and $null -ne $v.status) {
+                if ($v.cookie -or $v.leak) { $bad += $prop.Name }
+                if ($prop.Name -ne 'methode_interdite' -and $v.cache -ne 'private, no-store') { $bad += "$($prop.Name):cache" }
+            }
+        }
+        Result "relais_sans_cache_cookie_ni_fuite" ($bad.Count -eq 0) "écarts=$($bad -join ',')"
+        Result "relais_diffusion_interne_joignable" ($p.diffusion_interne_joignable -eq 200) "media-delivery /ready=$($p.diffusion_interne_joignable)"
+    }
+    # Aucun guillemet double dans la commande (PowerShell 5.1 les retire des arguments natifs).
+    $webScript = 'npm ci --no-audit --no-fund --silent >/dev/null 2>&1; echo NL_CI=$?; npm run typecheck >/tmp/t 2>&1; echo NL_TYPECHECK=$?; npm run lint >/tmp/l 2>&1; echo NL_LINT=$?; tail -n 5 /tmp/l; npm run format:check >/tmp/f 2>&1; echo NL_FORMAT=$?; npx vitest run --reporter=verbose >/tmp/v 2>&1; echo NL_VITEST=$?; grep -E ''Tests |Test Files|(✓|×) tests/media'' /tmp/v; npm run build >/tmp/b 2>&1; echo NL_BUILD=$?; tail -n 3 /tmp/b; if grep -rlE ''Bearer|MEDIA_DELIVERY|media-delivery|nl_session|API_INTERNAL|nl-media-|X-Amz|presign'' .next/static; then echo NL_BUNDLE=fuite; else echo NL_BUNDLE=propre; fi'
+    $w = (docker run --rm -v "${root}:/repo" -v /repo/apps/web/node_modules -v /repo/apps/web/.next -w /repo/apps/web -e NEXT_TELEMETRY_DISABLED=1 node:22-bookworm sh -c $webScript 2>&1 | Out-String)
+    function Step([string]$k) { $m = [regex]::Match($w, "NL_$k=(\S+)"); if ($m.Success) { $m.Groups[1].Value } else { "?" } }
+    Result "web_dependances_installees" ((Step "CI") -eq "0") "npm ci=$(Step 'CI')"
+    Result "web_typecheck_lint_format" ((Step "TYPECHECK") -eq "0" -and (Step "LINT") -eq "0" -and (Step "FORMAT") -eq "0") "typecheck=$(Step 'TYPECHECK') lint=$(Step 'LINT') format=$(Step 'FORMAT')"
+    $vt = [regex]::Match($w, "Tests\s+(\d+) passed(?: \((\d+)\))?")
+    $vtFail = [regex]::Match($w, "Tests\s+.*?(\d+) failed")
+    $mediaT = ([regex]::Matches($w, "✓ tests/media")).Count
+    Result "web_vitest" ((Step "VITEST") -eq "0" -and $vt.Success -and [int]$vt.Groups[1].Value -ge 64 -and -not $vtFail.Success -and $mediaT -ge 30) "code=$(Step 'VITEST') réussis=$($vt.Groups[1].Value) dont médias=$mediaT"
+    Result "web_build_production" ((Step "BUILD") -eq "0") "build=$(Step 'BUILD')"
+    Result "web_aucun_secret_cote_navigateur" ((Step "BUNDLE") -eq "propre") "JavaScript client : $(Step 'BUNDLE')"
+}
 
 # -----------------------------------------------------------------------------
 # 6. Intégrité et garde-fous

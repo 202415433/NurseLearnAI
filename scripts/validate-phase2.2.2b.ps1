@@ -77,8 +77,9 @@ $med = Psql "SELECT count(*) FROM programs WHERE is_medical AND status = 'publis
 Result "aucun_programme_medical_publie" ($med -eq "0") "programmes médicaux publiés = $med"
 
 $ops = ApiPy "from app.main import create_app; p = create_app().openapi()['paths']; e = [(m, k) for k, v in p.items() if k.startswith('/api/v1/editorial') and not k.startswith('/api/v1/editorial/media') for m in v]; print(len(e), sorted(k for _, k in e if k.endswith('/publish')))"
-# 37 opérations en 2.2.2-b ; 2.2.3-e ajoute les 3 opérations de rattachement des médias aux leçons.
-Result "operations_editoriales_une_seule_publication" ($ops -match "^(37|40) \['/api/v1/editorial/releases/\{release_id\}/publish'\]$") $ops
+# 37 opérations en 2.2.2-b ; 2.2.3-e ajoute les 3 opérations de rattachement des médias aux leçons (E1)
+# puis la lecture des quotas de stockage (E2, GET /api/v1/editorial/quotas/media).
+Result "operations_editoriales_une_seule_publication" ($ops -match "^(37|40|41) \['/api/v1/editorial/releases/\{release_id\}/publish'\]$") $ops
 $flag = ApiPy "from app.core.config import get_settings; print(get_settings().medical_publication_enabled)"
 Result "publication_medicale_desactivee" ($flag -eq "False") "medical_publication_enabled=$flag"
 

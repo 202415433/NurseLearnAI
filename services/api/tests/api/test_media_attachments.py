@@ -234,3 +234,81 @@ def test_legal_hold_never_makes_an_infected_or_revoked_media_servable(
             assert sql(sync_engine, "SELECT legal_hold FROM media_assets WHERE id = :m", m=mid).scalar() is True
             for who in (w.author, admin):
                 assert c.get(f"{D}/{mid}/preview", headers=who.h).status_code == 404
+
+
+# =============================================================================================
+# Bibliothèque : recherche, filtres, pagination, quotas (2.2.3-e, sous-lot E2)
+# =============================================================================================
+def test_library_search_filters_pagination_and_attachment_count(api: TestClient, w: World, worker: Any) -> None:
+    tag = uuid.uuid4().hex[:8]
+    lv = lv_draft(api, w, w.author)
+    names = [f"bib-{tag}-a", f"bib-{tag}-b", f"bib-{tag}-c"]
+    ids = []
+    for name in names:
+        r = reserve(api, w.author, "image", "image/png", 400, display_name=name)
+        ids.append(ok(r, 201)["id"])
+    clean = clean_media(
+        api,
+        worker,
+        w.author,
+        "image",
+        "image/png",
+        png(with_metadata=False, size=(9, 4)),
+        display_name=f"bib-{tag}-propre",
+    )
+    assert put(api, w.author, lv, clean).status_code == 201
+    r = api.get(M, headers=w.author.h, params={"q": f"bib-{tag}", "include_deleted": "false", "limit": 2})
+    assert r.status_code == 200 and r.headers["X-Total-Count"] == "4" and len(r.json()) == 2
+    page2 = api.get(M, headers=w.author.h, params={"q": f"bib-{tag}", "limit": 2, "offset": 2}).json()
+    assert len(page2) == 2 and not {x["id"] for x in page2} & {x["id"] for x in r.json()}
+    only_clean = api.get(M, headers=w.author.h, params={"q": tag, "state": "clean"})
+    assert only_clean.headers["X-Total-Count"] == "1"
+    item = only_clean.json()[0]
+    assert item["id"] == clean and item["attachment_count"] == 1
+    assert not {"clean_key", "quarantine_key", "url"} & set(item)
+    pending = api.get(M, headers=w.author.h, params={"q": tag, "state": "pending_upload", "kind": "image"})
+    assert pending.headers["X-Total-Count"] == "3"
+    assert api.get(M, headers=w.author.h, params={"q": tag, "kind": "video"}).headers["X-Total-Count"] == "0"
+    # Motif littéral : « % » et « _ » du client ne sont pas des jokers.
+    for joker in ("%", "_", f"bib{tag}"):
+        assert api.get(M, headers=w.author.h, params={"q": joker}).headers["X-Total-Count"] == "0"
+    # Supprimés exclus sur demande.
+    assert api.delete(f"{M}/{ids[0]}", headers=w.author.h).status_code == 204
+    assert api.get(M, headers=w.author.h, params={"q": tag, "include_deleted": "false"}).headers["X-Total-Count"] == "3"
+    assert api.get(M, headers=w.author.h, params={"q": tag}).headers["X-Total-Count"] == "4"
+    # Paramètres invalides : 422 ; sans session : 401.
+    for bad in ({"state": "propre"}, {"kind": "audio"}, {"limit": 0}, {"limit": 501}, {"q": "x" * 101}):
+        assert api.get(M, headers=w.author.h, params=bad).status_code == 422
+    assert api.get(M, params={"q": tag}).status_code == 401
+
+
+def test_library_never_reveals_other_establishments(api: TestClient, w: World, worker: Any) -> None:
+    tag = uuid.uuid4().hex[:8]
+    ok(reserve(api, w.org_instr, "image", "image/png", 400, display_name=f"org-{tag}", organization_id=w.org_a), 201)
+    assert api.get(M, headers=w.org_instr.h, params={"q": tag}).headers["X-Total-Count"] == "1"
+    for who in (w.other_instr, w.student):
+        r = api.get(M, headers=who.h, params={"q": tag})
+        assert r.status_code == 200 and r.headers["X-Total-Count"] == "0" and r.json() == []
+
+
+def test_media_quotas_are_read_only_and_scoped(api: TestClient, w: World) -> None:
+    Q = f"{E}/quotas/media"
+    assert api.get(Q).status_code == 401
+    mine = ok(api.get(Q, headers=w.org_instr.h))
+    scopes = {(s["scope"], s["organization_id"]) for s in mine["scopes"]}
+    assert ("user", None) in scopes and ("organization", w.org_a) in scopes
+    assert not any(s == "platform" for s, _ in scopes)  # pas de création au catalogue public
+    assert not any(o == w.org_b for _, o in scopes)
+    gib = 1073741824
+    for s in mine["scopes"]:
+        assert s["quota_bytes"] == {"user": gib, "organization": 5 * gib, "platform": 20 * gib}[s["scope"]]
+        assert s["used_bytes"] >= 0 and s["reserved_bytes"] >= 0
+    assert mine["file_limits"] == {
+        "image": 5 * 1048576,
+        "document": 20 * 1048576,
+        "video": 200 * 1048576,
+        "captions": 1048576,
+    }
+    author = ok(api.get(Q, headers=w.author.h))
+    assert ("platform", None) in {(s["scope"], s["organization_id"]) for s in author["scopes"]}
+    assert api.post(Q, headers=w.author.h, json={}).status_code == 405

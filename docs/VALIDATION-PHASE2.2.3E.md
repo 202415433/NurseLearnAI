@@ -4,8 +4,8 @@ Branche : `phase-2.2.3e-media-management-ui` (depuis `main` @ `e3a3ec3`, 2.2.3-d
 Trois sous-lots successifs, un commit chacun : **E1** correctifs préalables · **E2** interfaces · **E3** validation de bout en bout.
 Aucun développement 2.2.4 ni tuteur IA ; aucune URL S3 ; aucun jeton autonome ; aucune publication médicale.
 
-> **État : E1 terminé, point de contrôle E1 en cours** (validation Windows `-Stage e1`). E2 et E3 ne
-> démarrent qu'après un point de contrôle E1 vert.
+> **État : E1 validé (32/32 Windows) ; E2 développé, validation Windows `-Stage e2` en attente.** E3 ne
+> démarre qu'après une validation E2 verte.
 
 ## 1. Audit préalable
 
@@ -109,4 +109,99 @@ ignorait les deux identifiants paramétrés contenant une espace (`[ClamAV 1.5.5
 tests ont bien été exécutés et réussis (code pytest 0). Filtre corrigé (`^\S+::test_.+? (PASSED|…)`), seuil
 inchangé ; vérifié en local : 9 lignes reconnues sur 9.
 
-*Troisième passage Windows : à compléter.*
+**Troisième passage Windows (2026-11-24, `08e9345`) : 32/32, 0 échec — point de contrôle E1 VERT.**
+Non-régression 2.2.3-d 30/30, R3 32/32 (et D14, 2.2.3-c … 1.2) ; 0010 appliquée (76 tables) ; FreshClam →
+clamd : 6/6 (rechargements 2 → 3, chargée = disque = 28193) ; pytest 152 tests, codes 0/0, aucun échec ni
+saut (SQL 0010 : 11, D14 : 15, rattachement : 5, conservation : 2, éditions figées : 4, ClamAV réel : 19
+dont EICAR, signatures : 9, diffusion : 27, éditorial : 30) ; intégrité intacte. Journal
+`phase2.2.3e-20261124-215507.log`.
+
+## 6. E2 — Interfaces des médias et relais Web
+
+### 6.1 Ajouts à l'API (lecture seule, aucune migration)
+
+| Ajout | Détail |
+|---|---|
+| `GET /api/v1/editorial/media` (paramètres facultatifs) | `q` (motif littéral, `%` et `_` échappés), `kind`, `state` (7 états), `include_deleted`, `limit` 1–500, `offset` ; total filtré dans `X-Total-Count` ; `attachment_count` par média. Sans paramètre : comportement 2.2.3-b inchangé. Portée toujours calculée par le serveur. |
+| `GET /api/v1/editorial/quotas/media` | Occupation dérivée de `media_assets` (même calcul que `nl_media_scope_usage`) et quota (`media_usage` ou défaut 1/5/20 Gio) ; portées : l'utilisateur, ses établissements où il peut créer, la plateforme s'il peut y créer. Aucun chiffre d'un autre établissement. Aucune écriture. |
+
+Inventaires mis à jour : opérations éditoriales 40 → 41 (`test_editorial.py`, `validate-phase2.2.2b.ps1`) ;
+inventaire `/api/v1/editorial/media` inchangé (8 opérations, aucune diffusion).
+
+### 6.2 Relais Web → media-delivery (`apps/web/app/relais/medias/…`)
+
+| Route (même origine) | Destination fixe (serveur) | Contrôles |
+|---|---|---|
+| `GET /relais/medias/{id}/apercu` | `media-delivery /api/v1/media/{id}/preview` | lecture : `Sec-Fetch-Site` ∈ {same-origin, none}, `Origin` = hôte ; UUID ; session |
+| `GET /relais/medias/{id}/diffusion?release=&lesson_version=` | `media-delivery /api/v1/media/{id}/content` | idem + contexte pédagogique (UUID) obligatoire |
+| `GET /relais/medias/{id}` / `DELETE` | API `GET` / `DELETE /editorial/media/{id}` | suivi d'analyse ; abandon (mutation : même origine) |
+| `POST /relais/medias` | API `POST /editorial/media` | même origine ; JSON ≤ 16 Kio ; champs du contrat seulement |
+| `PUT /relais/medias/{id}/contenu` | API `PUT /editorial/media/{id}/content` | même origine ; `Content-Length` obligatoire, ≤ 200 Mio ; flux (`duplex: half`) |
+
+- **Session** : cookie HttpOnly `__Host-nl_session` (ou `nl_session` en HTTP local) lu par le serveur Web et
+  transmis en `Authorization: Bearer` au service interne, à CHAQUE requête (y compris chaque plage vidéo).
+  Jamais dans une URL, jamais dans le JavaScript client, aucun jeton autonome, aucun stockage persistant.
+- **Destination** : `MEDIA_DELIVERY_INTERNAL_URL` / `API_INTERNAL_URL` (environnement du serveur) ; le client
+  ne fournit qu'un UUID validé → aucune adresse libre, pas de SSRF ; redirections non suivies.
+- **En-têtes** : vers l'amont, `Range` et `If-Range` (validés) seulement ; vers le navigateur, liste blanche
+  (`Content-Type`, `Content-Range`, `Accept-Ranges`, `Content-Disposition`, `ETag`, CSP `sandbox`, …),
+  `Cache-Control: private, no-store`, aucun `Set-Cookie`. Statuts 200/206/304/401/403/404/416/429/503
+  relayés ; tout autre → 502. Corps d'erreur réduit à `{status, code}` (aucun détail interne).
+- **Flux** : corps amont relayé en flux (aucune mise en mémoire) ; l'abandon du navigateur coupe l'amont
+  (`signal`). Next.js retire `Content-Length` (transfert par morceaux) ; `Content-Range` et `Accept-Ranges`
+  sont conservés : la recherche dans la vidéo fonctionne par requêtes `Range`.
+- **Middleware** : `/relais/` exclu (aucune redirection de langue, aucun rafraîchissement implicite).
+- **Aucune journalisation** des requêtes, des sessions ni des contenus par le relais.
+
+### 6.3 Écrans (FR/EN, sans nouveau cadriciel)
+
+| Écran | Contenu |
+|---|---|
+| `/{fr,en}/edition` | Accueil de l'espace d'édition ; modules de la portée |
+| `/{fr,en}/edition/medias` | Médiathèque : recherche, filtres format/état, médias supprimés, pagination (20), taille, date, état antivirus (7 états, texte explicite), conservation légale, rattachements ; quotas (`<meter>`) et limites par fichier |
+| `/{fr,en}/edition/medias/televerser` | Téléversement : sélection ou glisser-déposer, validation indicative (format, 5/20/200/1 Mio), progression réelle (XHR `upload.onprogress`, `<progress>` + zone `aria-live`), annulation (abandon de la réservation), suivi de l'analyse (toutes les 2 s, 5 min) ; confirmation du mot de passe si la session sensible a expiré |
+| `/{fr,en}/edition/medias/{id}` | Métadonnées, aperçu autorisé (seulement `clean`), actualisation contrôlée pendant l'analyse, révocation (relecteurs, administration), conservation légale + historique (administration), suppression logique |
+| `/{fr,en}/edition/modules/{id}` | Leçons et versions → sélecteur |
+| `/{fr,en}/edition/versions/{id}/medias` | Sélecteur de l'éditeur pédagogique : médias rattachés (aperçu, retrait), recherche et rattachement (même portée que la leçon) ; version non brouillon = lecture seule (« figée ») |
+
+Lecteurs réutilisables (`components/media/MediaPlayer.tsx`, modes aperçu et apprenant) : image (texte
+alternatif, responsive), PDF (téléchargement contrôlé, `Content-Disposition` fixé par media-delivery), MP4
+(`<video controls>`, Range) avec pistes VTT (`<track kind="captions">`) ; erreur de lecture (révocation,
+session expirée, limite) annoncée (`role="alert"`) avec reprise. Toutes les adresses sont `/relais/medias/…`.
+
+Le mode apprenant est prêt (relais `diffusion` + lecteur) ; son intégration dans une page de leçon
+apprenant (catalogue des médias d'une leçon publiée) relève de 2.2.4 et n'est pas développée ici.
+
+### 6.4 Résultats locaux E2 (conteneur de développement)
+
+| Vérification | Résultat |
+|---|---|
+| pytest API (rattachement + bibliothèque/quotas, édition, téléversement, analyse, diffusion) | 128 réussis, 1 ignoré (ClamAV réel absent) ; 3 nouveaux tests bibliothèque/quotas |
+| Suites complètes | API 237 réussis, 11 ignorés (RustFS/ClamAV réels absents) ; base de données 182 réussis |
+| ruff, mypy | OK |
+| Web : typecheck, ESLint, Prettier | OK |
+| Vitest | 64 réussis (dont 30 médias : relais, validation, i18n, composants) |
+| `next build` | OK (5 routes de relais, 6 écrans) |
+| JavaScript client | aucune occurrence de `Bearer`, `media-delivery`, `nl_session`, `API_INTERNAL`, `nl-media-`, `X-Amz`, `presign` |
+| Sonde du relais (Next.js + media-delivery réels) | 401 sans session ou session invalide ; 404 identifiant/contexte invalides ; 403 intersite, origine étrangère, CSRF réservation et téléversement ; 405 méthode ; `private, no-store`, aucun cookie, aucune fuite |
+| Parcours réel local à travers le relais (API, media-delivery, Next.js, worker ; ClamAV imité) | 18/19 puis 19/19 : téléversement → quarantaine (jamais servie, 404) → analyse → sain ; aperçu image ; PDF en pièce jointe ; vidéo 206 `Content-Range` ; 416 hors fichier et plages multiples ; VTT ; pages Web sans fuite ; révocation → requête suivante 404 ; session révoquée → 401 |
+| Captures (Chrome) et axe WCAG 2.0–2.2 AA sur 8 écrans (FR/EN, bureau et mobile 390 px) | 0 violation, 0 erreur console (après correction du débordement de l'en-tête mobile) |
+| Révocation pendant une lecture réelle (vidéo 40 Mo, lecteur lent) | flux coupé (`IncompleteRead`) après ≈ 13 Mo ; voir risque E2-1 |
+
+### 6.5 Risques résiduels propres à E2
+
+| Id | Risque | Traitement |
+|---|---|---|
+| E2-1 | Après une révocation, les octets déjà en tampon entre media-delivery, le relais et le navigateur (≈ 10 Mo mesurés en local, selon les tampons TCP) sont encore livrés avant la coupure (revérification toutes les 10 s, D3). | Accepté et documenté ; les octets transmis ne peuvent pas être repris (déjà vrai en 2.2.3-d). |
+| E2-2 | Réponse 200 sans `Content-Length` (transfert par morceaux) via le relais. | Lecture et recherche par `Range` (206) vérifiées ; contrôle navigateur réel en E3 (Playwright). |
+| E2-3 | L'intégration apprenant (page de leçon) n'est pas développée (2.2.4). | Relais et lecteur prêts ; hors périmètre. |
+| E2-4 | Le relais applique `Sec-Fetch-Site`/`Origin` ; un navigateur très ancien sans ces en-têtes est admis en lecture (cookie `SameSite=Lax` non envoyé en sous-ressource intersite). | Mutations : même origine exigée sans exception. |
+
+### 6.6 Validation Windows E2
+
+```powershell
+cd C:\NurseLearnAI-git
+powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.3e.ps1 -Stage e2
+```
+
+*Résultat Windows E2 : à compléter.*

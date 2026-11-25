@@ -24,6 +24,7 @@ from app.domains.identity.organizations import router as organizations_router
 from app.domains.identity.router import router as identity_router
 from app.domains.media.attachments import router as attachments_router
 from app.domains.media.delivery import router as delivery_router
+from app.domains.media.quotas import router as media_quotas_router
 from app.domains.media.routes import router as media_router
 from app.domains.reference.router import router as reference_router
 
@@ -46,6 +47,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(organizations_router)
     app.include_router(media_router)
     app.include_router(attachments_router)
+    app.include_router(media_quotas_router)
     app.include_router(editorial_router)
     return app
 

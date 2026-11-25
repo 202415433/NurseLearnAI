@@ -27,7 +27,7 @@ import uuid
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -402,16 +402,59 @@ async def upload_content(
     return media_out(await _load(db, ctx, mid))
 
 
-@router.get("", summary="Médias de la portée (métadonnées, jamais les octets)")
-async def list_media(ctx: Auth, db: Db) -> list[dict[str, Any]]:
-    rows = await db.execute(
-        text(
-            "SELECT * FROM media_assets m WHERE (CAST(:scope_all AS boolean) "
-            "OR m.organization_id = ANY(CAST(:scope_orgs AS uuid[]))) ORDER BY m.created_at DESC, m.id LIMIT 500"
-        ),
-        scope_params(ctx),
-    )
-    return [media_out(r) for r in rows.mappings()]
+MEDIA_STATES = ("pending_upload", "quarantined", "scanning", "clean", "infected", "scan_failed", "revoked")
+MediaState = Literal["pending_upload", "quarantined", "scanning", "clean", "infected", "scan_failed", "revoked"]
+# Requête de liste : fragments statiques seulement ; les valeurs du client passent en paramètres liés.
+LIST_SQL = (
+    "SELECT __COLS__ FROM media_assets m "
+    "WHERE (CAST(:scope_all AS boolean) OR m.organization_id = ANY(CAST(:scope_orgs AS uuid[]))) "
+    "AND (CAST(:q AS text) IS NULL OR m.display_name ILIKE CAST(:q AS text) ESCAPE '\\') "
+    "AND (CAST(:kind AS text) IS NULL OR m.kind = CAST(:kind AS text)) "
+    "AND (CAST(:state AS text) IS NULL OR m.state = CAST(:state AS text)) "
+    "AND (CAST(:deleted AS boolean) OR m.deleted_at IS NULL)__TAIL__"
+)
+LIST_COUNT = LIST_SQL.replace("__COLS__", "count(*)").replace("__TAIL__", "")
+LIST_PAGE = LIST_SQL.replace(
+    "__COLS__", "m.*, (SELECT count(*) FROM lesson_version_media l WHERE l.media_id = m.id) AS attachment_count"
+).replace("__TAIL__", " ORDER BY m.created_at DESC, m.id LIMIT :limit OFFSET :offset")
+
+
+def like_pattern(q: str | None) -> str | None:
+    """Motif ILIKE littéral : les caractères spéciaux du client sont échappés (aucune injection de motif)."""
+    if not q or not q.strip():
+        return None
+    escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+@router.get("", summary="Médias de la portée (métadonnées, jamais les octets ; recherche et filtres 2.2.3-e)")
+async def list_media(
+    ctx: Auth,
+    db: Db,
+    response: Response,
+    q: Annotated[str | None, Query(max_length=100)] = None,
+    kind: Annotated[Literal["image", "video", "captions", "document"] | None, Query()] = None,
+    state: Annotated[MediaState | None, Query()] = None,
+    include_deleted: bool = True,
+    limit: Annotated[int, Query(ge=1, le=500)] = 500,
+    offset: Annotated[int, Query(ge=0, le=100000)] = 0,
+) -> list[dict[str, Any]]:
+    """Portée calculée côté serveur (jamais transmise par le client). Le total filtré est renvoyé dans
+    l'en-tête `X-Total-Count` ; `attachment_count` = nombre de versions de leçon qui rattachent le média.
+    Sans paramètre, comportement de 2.2.3-b (500 derniers, supprimés compris)."""
+    params: dict[str, Any] = {
+        **scope_params(ctx),
+        "q": like_pattern(q),
+        "kind": kind,
+        "state": state,
+        "deleted": include_deleted,
+        "limit": limit,
+        "offset": offset,
+    }
+    total = (await db.execute(text(LIST_COUNT), params)).scalar() or 0
+    rows = await db.execute(text(LIST_PAGE), params)
+    response.headers["X-Total-Count"] = str(total)
+    return [{**media_out(r), "attachment_count": r["attachment_count"]} for r in rows.mappings()]
 
 
 @router.get("/{media_id}", summary="Métadonnées et état d'un média")
