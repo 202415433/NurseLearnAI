@@ -4,7 +4,7 @@ Branche : `phase-2.2.3e-media-management-ui` (depuis `main` @ `e3a3ec3`, 2.2.3-d
 Trois sous-lots successifs, un commit chacun : **E1** correctifs préalables · **E2** interfaces · **E3** validation de bout en bout.
 Aucun développement 2.2.4 ni tuteur IA ; aucune URL S3 ; aucun jeton autonome ; aucune publication médicale.
 
-> **État : E1 validé (32/32 Windows) ; E2 validé (47/47 Windows) ; E3 développé, validation Windows `-Stage e3` en attente.**
+> **État : E1 validé (32/32), E2 validé (47/47), E3 validé (83/83) sous Windows — étape 2.2.3-e validée localement ; non poussée.**
 
 ## 1. Audit préalable
 
@@ -332,7 +332,22 @@ préalable réussi).
   appels de processus et d'URL sans justification). Corrigés (justifications explicites :
   binaires fixes, adresse interne fixe) ; `ruff check .` et `ruff format --check .` verts sur le dépôt.
 
-*Troisième passage Windows E3 : à compléter.*
+**Troisième passage Windows E3 (2026-11-25, `06f4c27`) : 83/83, 0 échec — VALIDATION 2.2.3-e VERTE.**
+Journal `phase2.2.3e-20261125-110841.log`.
+
+| Bloc | Résultat |
+|---|---|
+| Non-régression (2.2.3-d 30/30, R3 32/32, D14, 2.2.3-c → 1.2) | verte, Ruff et mypy compris |
+| E1 : 0010, privilèges, FreshClam (notification réelle 28193 → 28194, rechargements 8 → 9) | 16/16 |
+| E1 : pytest pile réelle | 155 tests, codes 0/0 (SQL 0010 : 11, D14 : 15, rattachement : 8, conservation : 2, éditions figées : 4, ClamAV réel : 19 dont EICAR, signatures : 9, diffusion : 27, éditorial : 30) + bibliothèque/quotas : 3 |
+| E2 : relais (8 contrôles), Vitest 64 (dont 30 médias), typecheck, lint, format, build, JavaScript client propre | vert |
+| E3 : 24 parcours Playwright + axe (Chrome, ClamAV réel) | **24/24**, 0 échec, 0 saut, 0 instable ; 14 captures |
+| E3 : sauvegarde chiffrée | 114,6 Mio ; 18 objets de quarantaine, 15 sains ; 39 médias ; 3 rattachements ; intégrité vérifiée (36 membres) ; altération et mauvaise clé refusées |
+| E3 : restauration isolée (tmpfs, réseau interne) | tables, rattachements, empreintes des octets, objets sains et de quarantaine, états antivirus, verdicts, permissions D14, `verify_head` : **tous conformes** ; aucun volume ; base de travail inchangée et injoignable |
+| Intégrité | aucun volume, donnée ni objet perdu ; aucun programme médical publié ; pilote PAB en brouillon ; aucune URL publique ni présignée |
+
+Le RustFS jetable a démarré en mémoire dès que l'attente de `/health/ready` a été ajoutée ; le repli sur la
+couche du conteneur n'a pas été nécessaire.
 
 ## 8. Registre des risques résiduels (2.2.3-e)
 
