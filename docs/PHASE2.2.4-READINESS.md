@@ -23,6 +23,19 @@
    (risque D3-6).
 3. La page de lecture de leçon (2.2.5) qui place `MediaPlayer` en mode `learner`.
 
+## 2 bis. Prérequis par sujet (analyse, aucune implémentation)
+
+| Sujet | Existant | Prérequis avant de développer |
+|---|---|---|
+| Inscriptions pédagogiques | Table et règles d'inscription du modèle de données (Phase 1) ; aucune route | Contrat d'API `/api/v1/learning/enrollments` (inscription, retrait), règles d'unicité, état actif/retiré, audit sans contenu |
+| Accès aux programmes privés | Isolation des contenus d'établissement en base (0003) ; diffusion qui exige une édition exposée (2.2.3-d) | Règle : apprenant inscrit **et** membre de l'établissement ; extension de `can_learn` de media-delivery aux inscriptions (D3-6) |
+| Droits par établissement | Rôles et portées (`org_admin`, `instructor`), permissions par portée | Matrice : qui inscrit, qui retire, qui consulte la progression ; aucun rôle de plateforme accordé par un établissement |
+| Parcours apprenant | Catalogue public (2.2.1), éditions publiées (2.2.2-c) | Résolution langue × juridiction de l'édition, prérequis entre modules, bascule d'édition |
+| Page de leçon | Lecteur `MediaPlayer` mode apprenant, relais `/relais/medias/{id}/diffusion` | Route qui renvoie édition, version de leçon et médias (texte alternatif, sous-titres) ; page 2.2.5 |
+| Progression pédagogique | Tables de progression (Phase 1) | Événements idempotents, regroupement côté client, limites de débit, reprise, complétion |
+| Révocation des inscriptions | — | Effet immédiat : contrôle à chaque requête de diffusion (comme la session), époque d'accès ; audit |
+| Isolation entre établissements | Déclencheurs, portée calculée par le serveur, 404 sans divulgation (2.2.3) | Tests adversariaux inter-établissements sur chaque nouvelle route ; aucune fuite d'existence |
+
 ## 3. Prérequis avant 2.2.4
 
 1. Fusion de 2.2.3-e après validation Windows (`-Stage e3`) et CI.

@@ -311,6 +311,117 @@ jobs:
       - name: Les fichiers générés sont à jour
         run: git diff --exit-code packages/design-tokens/dist
 
+  media-e2e:
+    name: Parcours médias (pile réelle, ClamAV réel, Playwright + axe)
+    # 2.2.3-e : les 24 parcours de apps/web/e2e/medias.spec.ts sur la pile Docker complète (PostgreSQL,
+    # Redis, RustFS, ClamAV + freshclam, media-worker, media-delivery, relais Next.js). Données
+    # SYNTHÉTIQUES (scripts/e2e_media_setup.py) ; EICAR construit en mémoire ; aucun simulacre de ClamAV.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configuration (secrets aléatoires propres à l'exécution)
+        run: |
+          cp .env.example .env
+          sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 16)/" .env
+          sed -i "s/^REDIS_PASSWORD=.*/REDIS_PASSWORD=$(openssl rand -hex 16)/" .env
+          sed -i "s/^API_DB_PASSWORD=.*/API_DB_PASSWORD=$(openssl rand -hex 24)/" .env
+          for v in S3_SECRET_KEY S3_API_SECRET_KEY S3_SCANNER_SECRET_KEY S3_READER_SECRET_KEY; do
+            sed -i "s/^$v=.*/$v=$(openssl rand -hex 16)/" .env
+          done
+          echo "MEDIA_SCANNER_DB_PASSWORD=$(openssl rand -hex 24)" >> .env
+          docker compose --profile media config -q
+      - name: Pile complète avec le profil media (attente de la santé)
+        run: |
+          wait_stack() {
+            for i in $(seq 1 "$1"); do
+              bad=$(docker compose --profile media ps -a --format '{{.Service}}|{{.State}}|{{.Health}}|{{.ExitCode}}' | awk -F'|' '$1=="migrate" || $1=="s3-init" { if ($2!="exited" || $4!="0") print; next } $2!="running" || ($3!="" && $3!="healthy")')
+              [ -z "$bad" ] && return 0
+              sleep 5
+            done
+            echo "Services non prêts : $bad"; docker compose --profile media logs --tail 40 migrate s3-init clamd; return 1
+          }
+          docker compose --profile media up -d --build
+          wait_stack 180
+      - name: ClamAV réel — signatures fraîches (≤ 48 h, contrôle fermé du worker)
+        run: |
+          # freshclam télécharge les signatures et notifie clamd par le socket dédié (2.2.3-e) ; à défaut
+          # d'une mise à jour, RELOAD par le même chemin. Le contrôle de fraîcheur du worker est inchangé.
+          for i in $(seq 1 40); do
+            docker compose exec -T media-worker python -m app.workers.media_scan --self-check && exit 0
+            docker compose exec -T -u clamav freshclam clamdscan --config-file=/etc/clamav/clamd.conf --reload || true
+            sleep 15
+          done
+          echo "ClamAV : signatures absentes ou périmées"; exit 1
+      - name: Données synthétiques (comptes @example.test, établissements fictifs, EICAR en mémoire)
+        run: |
+          get() { grep -E "^$1=" .env | head -1 | cut -d= -f2-; }
+          mkdir -p "$RUNNER_TEMP/e2e-media" && chmod 777 "$RUNNER_TEMP/e2e-media"
+          docker run --rm --network nurselearn_default -v "$PWD:/repo" -v "$RUNNER_TEMP/e2e-media:/fixtures" -w /repo \
+            -e API_URL=http://api:8000 -e "ADMIN_DSN=postgresql://$(get POSTGRES_USER):$(get POSTGRES_PASSWORD)@postgres:5432/$(get POSTGRES_DB)" \
+            -e "REDIS_URL=redis://:$(get REDIS_PASSWORD)@redis:6379/0" -e S3_ENDPOINT=http://s3:9000 \
+            -e S3_UPLOADER_KEY=nl-api-uploader -e "S3_UPLOADER_SECRET=$(get S3_API_SECRET_KEY)" \
+            -e QUARANTINE_BUCKET=nl-media-quarantine -e FIXTURES_DIR=/fixtures -e PYTHONDONTWRITEBYTECODE=1 \
+            python:3.12-slim sh -c "pip install -q --disable-pip-version-check --root-user-action=ignore -e services/api imageio-ffmpeg && python scripts/e2e_media_setup.py > /fixtures/setup.json"
+          python3 -c "import json,sys; d=json.load(open(sys.argv[1])); assert len(d['accounts'])==7 and d['infectedMedia']; print('comptes', len(d['accounts']))" "$RUNNER_TEMP/e2e-media/setup.json"
+          ls "$RUNNER_TEMP/e2e-media" | grep -v setup.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Dépendances Web et Google Chrome (décodage H.264)
+        working-directory: apps/web
+        run: |
+          npm ci
+          google-chrome --version || npx playwright install --with-deps chrome
+      - name: 24 parcours médias + axe (WCAG 2.2 AA)
+        working-directory: apps/web
+        run: npx playwright test --project=chrome-media --reporter=list,json
+        env:
+          CI: "1"
+          E2E_BASE_URL: http://localhost:3000
+          E2E_MEDIA_FILE: ${{ runner.temp }}/e2e-media/setup.json
+          E2E_MEDIA_FILES: ${{ runner.temp }}/e2e-media
+          E2E_CAPTURES: ${{ runner.temp }}/media-artifacts/captures
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/media-artifacts/resultats-playwright.json
+      - name: Bilan — 24 réussis, aucun échec, aucun saut, aucune instabilité
+        if: always()
+        run: |
+          python3 - "$RUNNER_TEMP/media-artifacts/resultats-playwright.json" <<'PY'
+          import json, sys
+          s = json.load(open(sys.argv[1]))["stats"]
+          print(s)
+          assert s["expected"] == 24 and s["unexpected"] == 0 and s["skipped"] == 0 and s["flaky"] == 0, s
+          PY
+      - name: Artefacts assainis (aucun mot de passe ni secret)
+        if: always()
+        run: |
+          # Comptes synthétiques : leurs mots de passe ne quittent jamais le runner ; secrets de la pile exclus.
+          python3 - "$RUNNER_TEMP/e2e-media/setup.json" "$RUNNER_TEMP/media-artifacts" <<'PY'
+          import json, os, pathlib, sys
+          secrets = []
+          if os.path.exists(sys.argv[1]):
+              secrets += [a["password"] for a in json.load(open(sys.argv[1]))["accounts"].values()]
+          for line in open(".env"):
+              k, _, v = line.strip().partition("=")
+              if any(t in k for t in ("PASSWORD", "SECRET", "KEY")) and len(v) >= 12:
+                  secrets.append(v)
+          for p in pathlib.Path(sys.argv[2]).rglob("*"):
+              if p.is_file():
+                  data = p.read_bytes()
+                  assert not any(s.encode() in data for s in secrets), f"secret dans {p}"
+          print("artefacts sans secret")
+          PY
+          rm -f "$RUNNER_TEMP/e2e-media/setup.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: parcours-medias-captures-et-resultats
+          path: ${{ runner.temp }}/media-artifacts
+          retention-days: 14
+      - name: Journaux en cas d'échec
+        if: failure()
+        run: docker compose --profile media logs --tail 120 api web media-delivery media-worker clamd freshclam
+
   compose:
     name: Docker Compose (pile complète, santé, communication entre services)
     runs-on: ubuntu-24.04

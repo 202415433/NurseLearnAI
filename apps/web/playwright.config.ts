@@ -22,7 +22,8 @@ export default defineConfig({
             testMatch: /medias\.spec\.ts/,
             timeout: 240_000,
             retries: 0,
-            use: { ...devices["Desktop Chrome"], channel: "chrome" },
+            // Aucune trace : elle contiendrait cookies de session et échanges réseau (artefacts CI assainis).
+            use: { ...devices["Desktop Chrome"], channel: "chrome", trace: "off" as const },
           },
         ]
       : []),

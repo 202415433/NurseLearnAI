@@ -366,7 +366,7 @@ couche du conteneur n'a pas été nécessaire.
 | D3-5 | Limite par adresse partagée API/diffusion | **Conservé** |
 | D3-6 | Apprenants d'établissement sans accès aux contenus privés | **Conservé** (2.2.4) |
 | D3-7 | Intégrité par métadonnée seulement | **Réduit** : la restauration isolée recalcule le SHA-256 des octets ; pas encore de relecture périodique en production |
-| E2-1 | Octets en tampon livrés après une révocation (≈ 10 Mio mesurés) | Accepté, documenté |
+| E2-1 | Octets en tampon livrés après une révocation (mesures § 9.5 : 6,75 Mio en direct, 9,0 Mio par le relais avec un lecteur arrêté ; ≤ 13,7 Mio avec un lecteur lent) | Accepté, documenté ; aucune révocation rétroactive des octets déjà reçus |
 | E2-2 | 200 sans `Content-Length` via le relais | Lecture et recherche vérifiées (E3 09, 16) |
 | E2-3 | Intégration apprenant (page de leçon) non développée | 2.2.4 / 2.2.5 |
 | E2-4 | Navigateur sans `Sec-Fetch-Site`/`Origin` admis en lecture | Mutations : même origine exigée |
@@ -374,7 +374,115 @@ couche du conteneur n'a pas été nécessaire.
 | E3-2 | Clé de sauvegarde dans `.env` local ; aucune copie hors site | Coffre, rotation, copie chiffrée hors site |
 | E3-3 | Sauvegarde manuelle, non atomique entre base et objets | Planification, fenêtre calme, rapprochement (déjà détecté) |
 | E3-4 | Comptes de test `e2e-medias-*@example.test` conservés dans la base de développement | Fictifs, rôles de test ; jamais en production |
+| E1-1 | Les fonctions `nl_media_attach`/`nl_media_detach` ne verrouillent pas elles-mêmes la version de leçon ; la sérialisation avec la soumission repose sur le `FOR UPDATE` posé par l'API (même transaction). Un client qui appellerait la fonction directement avec les identifiants `nl_api`, hors API, pourrait croiser une soumission (l'approbation et la publication revérifient toutefois `clean`). | Prochaine migration : `FOR SHARE` sur la version dans les fonctions |
+| D9 | Authentification multifacteur (relecteurs, administrateurs) absente | **Conservé** — bloque toute publication réelle et la production |
+| D10 | Validation médicale indépendante (relecteur qualifié) absente | **Conservé** — bloque toute publication réelle |
+| AUD | Audit de sécurité externe non réalisé | **Conservé** — exigé avant la production |
 
 **Le système n'est pas prêt pour la production.** Risques bloquants avant toute mise en production :
 R3-2 et R3-3 (stockage et secrets), D3-2 et D3-4, E3-1 à E3-3 (sauvegardes de production : identité dédiée,
-gestion de la clé, copie hors site, planification, procédure de bascule), MFA et revue de sécurité externe.
+gestion de la clé, copie hors site, planification, procédure de bascule), D9 (MFA), D10 (validation médicale
+indépendante) et audit de sécurité externe.
+
+## 9. Audit avant push (2026-11-25)
+
+### 9.1 Dépôt
+- Branche `phase-2.2.3e-media-management-ui`, 11 commits sur `main` (`e3a3ec3`), copie propre.
+- **Artefact retiré de l'historique** : deux instantanés Redis locaux (`dump.rdb`, `services/api/dump.rdb` :
+  compteurs de limites et files de test de l'environnement de développement, aucun secret applicatif)
+  avaient été commités par erreur (E1 et E2). La branche n'ayant jamais été poussée, ils ont été retirés
+  de tout l'historique local (réécriture des 10 commits, contenu final identique), puis `dump.rdb` a été
+  ajouté à `.gitignore`.
+- Recherche de secrets : aucun dans le diff ni dans les messages de commit (seule occurrence : un jeton
+  factice de test Vitest) ; sur le poste Windows, les 11 valeurs secrètes de `.env` et
+  `BACKUP_ENCRYPTION_KEY` ont **0 occurrence** dans les fichiers versionnés, les journaux et les captures
+  (seul `S3_ACCESS_KEY=nurselearn`, identifiant public par défaut, apparaît, comme dans `.env.example`).
+- `.env`, `backups/`, journaux JSON, captures et rapports Playwright : hors Git (`git check-ignore`).
+- Migrations 0001 à 0009 inchangées ; 0010 additive ; aucun programme médical publié ; pilote PAB en
+  brouillon ; périmètre : `apps/web` (médias), `services/api` (médias), `database` (0010 et tests),
+  `infra` (ClamAV, sauvegarde), `scripts`, `docs`, CI.
+
+### 9.2 Migration 0010
+
+| Exigence | Constat |
+|---|---|
+| Propriétaire | `nl_owner` (`nl_enforce_ownership()` en fin de migration ; vérifié par `test_postgres_roles`, inventaire SECURITY DEFINER) |
+| Chemin de recherche | `SET search_path = public, pg_temp` sur les trois fonctions |
+| EXECUTE | révoqué à PUBLIC ; accordé nominativement à `nl_api` (vérifié : `PUBLIC = false`) |
+| Injection SQL | aucune requête dynamique (`EXECUTE`, `format`) : paramètres typés `uuid`, `boolean`, `text` |
+| Acteur | `nl_actor()` lève une erreur sans `nl.actor_id` |
+| Portée et permissions | `content:create` dans la portée de la leçon (fonction + déclencheur 0007) ; `media:legal_hold` dans la portée du média + `user:manage` (déclencheur 0007) ; permission réservée à `admin` par déclencheur |
+| Éditions figées | déclencheur 0007 : insertion et suppression refusées hors brouillon ; la soumission, l'approbation et la publication exigent des médias sains |
+| Concurrence | conservation : `SELECT … FOR UPDATE` du média ; rattachement et retrait : la version est verrouillée `FOR UPDATE` par l'API dans la même transaction que la soumission (sérialisation) ; clé primaire (version, média) ; risque résiduel E1-1 (appel direct hors API) |
+| Journal | `media_legal_hold_events` : insertion réservée à la fonction, `UPDATE`/`DELETE`/`TRUNCATE` interdits |
+| Écriture directe | `nl_api` : aucun INSERT/DELETE sur `lesson_version_media`, aucun UPDATE de `legal_hold`, aucun INSERT dans le journal (vérifié par `verify_head.sql` et le contrôle Windows) |
+| Verdicts, quotas, audit | les fonctions ne modifient que `lesson_version_media`, `media_assets.legal_hold`/`legal_hold_reason` et le journal ; verdicts (`media_scan_events`, rôle `nl_media_scanner`), quotas (`media_usage`) et `audit_logs` (ajout seul) restent hors de portée de l'API |
+
+### 9.3 Tests ignorés localement (11)
+
+| Test | Motif | Dépendance | Exécuté par | Résultat pile réelle | Sécurité |
+|---|---|---|---|---|---|
+| `test_mailpit.py::test_verification_email_through_mailpit` | `MAILPIT_URL` absent | Mailpit | CI (job API), Windows (chaîne 1.2) | réussi | non critique (courriel) |
+| `test_media_delivery.py::test_no_direct_or_anonymous_storage_access` | RustFS réel requis (IAM, accès anonyme) | RustFS | CI (job API, `NL_TEST_S3_KIND=rustfs`), Windows (2.2.3-d) | réussi (27/27 diffusion) | **critique** — couvert |
+| `test_s3_identities.py` (9 tests : politiques propres, quarantaine seule pour l'API, analyse, lecture seule, anonyme refusé, élévation, multipart, objet sain inaltérable, chaîne complète) | RustFS réel requis | RustFS | CI (job API), Windows (R3, 2.2.3-d) | réussis (9/9 « adversariaux R3 RustFS réel ») | **critiques** — couverts |
+
+Aucun test n'est ignoré dans tous les environnements ; aucun seuil n'a été réduit.
+
+### 9.4 Relais Web
+
+| Exigence | Constat |
+|---|---|
+| Cookie | HttpOnly ; `Secure` et préfixe `__Host-` par défaut (`SESSION_COOKIE_SECURE=true`), désactivé explicitement en HTTP local ; `SameSite=Lax` (non envoyé en sous-ressource intersite) |
+| CSRF | mutations : même origine exigée (`Origin` / `Sec-Fetch-Site`) ; lectures : `cross-site`/`same-site` refusés (403, sonde Windows) |
+| Destination / SSRF | `MEDIA_DELIVERY_INTERNAL_URL` et `API_INTERNAL_URL` du serveur ; seul un UUID validé vient du client ; redirections non suivies |
+| Jeton | jamais dans une URL ni dans le JavaScript (parcours 24, build analysé) |
+| Range | `Range`/`If-Range` validés et relayés ; 206 et 416 (+ `Content-Range: bytes */n`) relayés (Vitest, parcours 09) |
+| Cache | `Cache-Control: private, no-store`, aucun `Set-Cookie` |
+| Mémoire | flux sans mise en mémoire : RSS de Next.js **250,8 Mio au repos = 250,8 Mio** avec un flux vidéo de 40 Mo arrêté côté client |
+| Déconnexion | client coupé brutalement : la connexion relais → diffusion n'a plus aucune donnée en file et se ferme en 3 à 6 s (signal d'annulation propagé) |
+| Session révoquée | 401 immédiat (parcours 17) |
+| Média révoqué | requête suivante 404, flux en cours coupé à la revérification (parcours 16, § 9.5) |
+
+### 9.5 E2-1 — octets livrés après une révocation (mesure locale, vidéo de 40 Mo, 1 Mio reçu avant)
+
+| Chemin | Lecteur | Reçus après la révocation | Issue |
+|---|---|---|---|
+| direct (media-delivery) | arrêté 15 s | 6,75 Mio | flux coupé ; requête suivante 404 |
+| relais Web | arrêté 15 s | 9,0 Mio | flux coupé (`IncompleteRead`) ; 404 |
+| direct | lent (≈ 640 Kio/s) | 11,25 Mio | coupé après 18 s ; 404 |
+| relais Web | lent | 13,7 Mio | coupé après 22 s ; 404 |
+
+Lecture : (1) **octets déjà reçus** avant la révocation : 1 Mio (hors de portée de toute révocation) ;
+(2) **octets déjà en transit** : lecteur arrêté, media-delivery bloqué par la contre-pression ne lit plus
+rien — 6,75 Mio en direct (tampons TCP de la diffusion et du client), **+ 2,25 Mio ajoutés par le relais**
+(second saut TCP et tampons de flux Node/undici) ; (3) **nouveaux octets lus après la révocation** :
+avec un lecteur qui consomme, la diffusion continue jusqu'à la revérification suivante (≤ 10 s) —
+≈ 4,5 à 4,7 Mio supplémentaires à ce débit. Ces volumes dépendent des tampons TCP du système et du débit
+du lecteur ; aucune révocation ne peut reprendre des octets déjà livrés (D3-1).
+
+### 9.6 Sauvegarde et restauration
+
+| Exigence | Constat |
+|---|---|
+| Chiffrement | AES-256-GCM (bibliothèque `cryptography`), blocs de 4 Mio, étiquette par bloc |
+| Nonces | préfixe aléatoire de 64 bits par archive (`secrets`) + compteur de bloc de 32 bits : jamais réutilisés dans une archive ; collision entre archives d'une même clé ≈ 2⁻⁶⁴ par paire |
+| Intégrité | ordre, fin et contenu authentifiés (données associées) ; SHA-256 de l'archive dans le manifeste |
+| Altération / mauvaise clé | refusées (Windows) |
+| Clair sur disque | aucun : dump et déchiffrement en tmpfs ; restauration RustFS en mémoire (repli éventuel sur la couche du conteneur, détruite avec lui) |
+| Manifeste | sans clé (empreinte de clé seulement) — vérifié |
+| Isolation | réseau Docker interne, conteneurs jetables, base de travail injoignable et inchangée |
+| Permissions | droits de la base (`--create`), rôles sans mot de passe, `verify_head` et contrôles D14 conformes |
+| Empreintes | SHA-256 recalculé sur les octets restaurés = `media_assets.sha256` |
+
+Limites (E3-1 à E3-4) inchangées : ce n'est **pas** une sauvegarde de production opérationnelle.
+
+### 9.7 Couverture CI des 24 parcours
+
+Nouveau job `media-e2e` (« Parcours médias (pile réelle, ClamAV réel, Playwright + axe) ») : pile Docker
+complète avec le profil `media`, secrets aléatoires par exécution, signatures ClamAV fraîches (freshclam +
+contrôle fermé du worker, aucun simulacre), données synthétiques (`scripts/e2e_media_setup.py`), Google
+Chrome, 24 parcours + axe, bilan exigé (24 réussis, 0 échec, 0 saut, 0 instable), artefacts assainis
+(captures et rapport JSON ; traces désactivées ; recherche des mots de passe synthétiques et des secrets
+de la pile avant publication). L'intégration dans le job Web existant n'est pas raisonnable : il n'a que
+PostgreSQL et Redis en services, sans RustFS, ClamAV, worker, diffusion ni relais conteneurisé. La
+sauvegarde/restauration reste validée sous Windows seulement.
