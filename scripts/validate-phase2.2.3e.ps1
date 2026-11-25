@@ -292,6 +292,8 @@ if ($Stage -eq 'e2') {
     $webScript = 'npm ci --no-audit --no-fund --silent >/dev/null 2>&1; echo NL_CI=$?; npm run typecheck >/tmp/t 2>&1; echo NL_TYPECHECK=$?; npm run lint >/tmp/l 2>&1; echo NL_LINT=$?; tail -n 5 /tmp/l; npm run format:check >/tmp/f 2>&1; echo NL_FORMAT=$?; npx vitest run >/tmp/v 2>&1; echo NL_VITEST=$?; grep -E ''Tests '' /tmp/v | sed ''s/^/NL_VT_ALL /''; npx vitest run tests/media.test.ts tests/media-components.test.tsx >/tmp/m 2>&1; echo NL_VITEST_MEDIA=$?; grep -E ''Tests '' /tmp/m | sed ''s/^/NL_VT_MEDIA /''; npm run build >/tmp/b 2>&1; echo NL_BUILD=$?; tail -n 3 /tmp/b; if grep -rlE ''Bearer|MEDIA_DELIVERY|media-delivery|nl_session|API_INTERNAL|nl-media-|X-Amz|presign'' .next/static; then echo NL_BUNDLE=fuite; else echo NL_BUNDLE=propre; fi'
     $w = (docker run --rm -v "${root}:/repo" -v /repo/apps/web/node_modules -v /repo/apps/web/.next -w /repo/apps/web -e NEXT_TELEMETRY_DISABLED=1 -e NO_COLOR=1 -e CI=1 node:22-bookworm sh -c $webScript 2>&1 | Out-String)
     $w = $w -replace "\x1b\[[0-9;]*m", ''  # codes couleur éventuels
+    # « next build » réécrit next-env.d.ts (fichier généré, versionné) : il est restauré à l'identique.
+    git checkout -- apps/web/next-env.d.ts 2>$null | Out-Null
     function Step([string]$k) { $m = [regex]::Match($w, "NL_$k=(\S+)"); if ($m.Success) { $m.Groups[1].Value } else { "?" } }
     Result "web_dependances_installees" ((Step "CI") -eq "0") "npm ci=$(Step 'CI')"
     Result "web_typecheck_lint_format" ((Step "TYPECHECK") -eq "0" -and (Step "LINT") -eq "0" -and (Step "FORMAT") -eq "0") "typecheck=$(Step 'TYPECHECK') lint=$(Step 'LINT') format=$(Step 'FORMAT')"
