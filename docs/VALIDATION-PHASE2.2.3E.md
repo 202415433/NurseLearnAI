@@ -486,3 +486,15 @@ Chrome, 24 parcours + axe, bilan exigé (24 réussis, 0 échec, 0 saut, 0 instab
 de la pile avant publication). L'intégration dans le job Web existant n'est pas raisonnable : il n'a que
 PostgreSQL et Redis en services, sans RustFS, ClamAV, worker, diffusion ni relais conteneurisé. La
 sauvegarde/restauration reste validée sous Windows seulement.
+
+### 9.8 Premier passage CI du job `media-e2e` (PR n° 21)
+
+Échec sur le parcours 05 (`scan_failed`) : au démarrage à froid, freshclam a téléchargé `daily` 28194 avant
+que clamd n'ouvre son socket (« Clamd was NOT notified »). Clamd est resté sur 28191 (83 h) et le worker
+a **refusé d'analyser** (`signatures_stale`, comportement fermé attendu). L'étape CI de fraîcheur aurait dû
+forcer un RELOAD, mais elle s'appuyait sur le code de sortie de `--self-check`, un diagnostic qui renvoie
+toujours 0. Correction limitée à la CI : la fraîcheur est lue dans le JSON (`signatures_fresh: true`
+exigé), sinon RELOAD et nouvel essai. Aucun simulacre, aucun contournement du contrôle du worker.
+Remarque d'exploitation (rattachée à D3-5) : sur une pile neuve, la première notification de freshclam
+peut être perdue ; le worker reste fermé jusqu'au prochain cycle de freshclam ou à un RELOAD manuel
+(`clamdscan --reload`).

@@ -348,7 +348,10 @@ jobs:
           # freshclam télécharge les signatures et notifie clamd par le socket dédié (2.2.3-e) ; à défaut
           # d'une mise à jour, RELOAD par le même chemin. Le contrôle de fraîcheur du worker est inchangé.
           for i in $(seq 1 40); do
-            docker compose exec -T media-worker python -m app.workers.media_scan --self-check && exit 0
+            # --self-check est un diagnostic (code 0 en toute circonstance) : la fraîcheur se lit dans son JSON.
+            docker compose exec -T media-worker python -m app.workers.media_scan --self-check > "$RUNNER_TEMP/clamav.json" || true
+            cat "$RUNNER_TEMP/clamav.json"
+            python3 -c "import json,sys; sys.exit(0 if json.loads(open(sys.argv[1]).read().strip().splitlines()[-1]).get('signatures_fresh') is True else 1)" "$RUNNER_TEMP/clamav.json" && exit 0
             docker compose exec -T -u clamav freshclam clamdscan --config-file=/etc/clamav/clamd.conf --reload || true
             sleep 15
           done
