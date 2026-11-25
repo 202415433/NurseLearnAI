@@ -23,9 +23,15 @@
 #    contexte invalide, 403 intersite et CSRF, aucune mise en cache, aucun cookie, aucune fuite ;
 # 9. Web (conteneur node:22) : typecheck, lint, format, Vitest, build, aucun secret ni adresse interne
 #    dans le JavaScript envoyé au navigateur.
+#
+# -Stage e3 (validation de bout en bout) : tout e2, plus
+# 10. données FICTIVES (scripts/e2e_media_setup.py) et 24 parcours Playwright + axe sur la pile réelle
+#     (Google Chrome, ClamAV réel), captures dans docs\validation-logs\captures-2.2.3e-<date> ;
+# 11. sauvegarde chiffrée et restauration ISOLÉE (scripts\backup-restore-media.ps1) ;
+# 12. documentation 2.2.3-e présente. Le dossier temporaire des fichiers de test est retiré à la fin.
 # Ne supprime aucun volume ni aucune donnée. Journal : docs\validation-logs\phase2.2.3e-<date>.log
 # =============================================================================
-param([ValidateSet('e1', 'e2')][string]$Stage = 'e1')
+param([ValidateSet('e1', 'e2', 'e3')][string]$Stage = 'e1')
 $ErrorActionPreference = "Continue"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 # Sans BOM : la sonde S3 est transmise à Python par l'entrée standard des conteneurs.
@@ -70,7 +76,7 @@ $hist = (git diff --diff-filter=MD --name-only origin/main...HEAD -- database/sc
 Result "migrations_historiques_inchangees" ([string]::IsNullOrWhiteSpace($hist)) $hist
 $added = (git diff --diff-filter=A --name-only origin/main...HEAD -- database/schema services/api/alembic/versions 2>$null) -join " "
 Result "seule_migration_ajoutee_0010" ($added -eq "database/schema/0010_media_editorial_permissions.sql database/schema/0010_media_editorial_permissions_down.sql services/api/alembic/versions/0010_media_editorial_permissions.py") $added
-if ($Stage -eq 'e2') {
+if ($Stage -in @('e2', 'e3')) {
     # -LiteralPath : les crochets des dossiers Next.js ([id]) sont des jokers pour Test-Path.
     $e2Files = @("apps\web\lib\media-relay.ts", "apps\web\app\relais\medias\[id]\apercu\route.ts", "apps\web\components\media\MediaUploader.tsx", "services\api\app\domains\media\quotas.py", "scripts\web_relay_probe.mjs")
     $e2Missing = @($e2Files | Where-Object { -not (Test-Path -LiteralPath (Join-Path $root $_)) })
@@ -253,7 +259,7 @@ Result "tests_diffusion_non_regression" (AllPassed $dlT 27) "$($dlT.Count) tests
 $edT = FileTests 'test_editorial.py'
 Result "tests_editoriaux_non_regression" (AllPassed $edT 20) "$($edT.Count) tests"
 Result "pytest_e1_sans_echec" ($pyCode -eq 0 -and @($lines | Where-Object { $_ -notmatch 'PASSED' }).Count -eq 0) "code=$pyCode ; $($lines.Count) tests"
-if ($Stage -eq 'e2') {
+if ($Stage -in @('e2', 'e3')) {
     $libT = @($lines | Where-Object { $_ -match 'test_library_|test_media_quotas' })
     Result "tests_bibliotheque_quotas_api" (AllPassed $libT 3) "$($libT.Count) tests (recherche, filtres, pagination, isolation, quotas)"
 }
@@ -261,7 +267,7 @@ if ($Stage -eq 'e2') {
 # -----------------------------------------------------------------------------
 # 7-9. E2 — API, relais Web, interfaces (Vitest, build, absence de secret côté navigateur)
 # -----------------------------------------------------------------------------
-if ($Stage -eq 'e2') {
+if ($Stage -in @('e2', 'e3')) {
     Log ""; Log ">>> E2 : API (inventaire), relais Web, interfaces"
     docker compose up -d --wait web 2>&1 | Out-Null
     $inv = (docker compose exec -T api python -c "from app.main import create_app; p = create_app().openapi()['paths']; e = [(m, k) for k, v in p.items() if k.startswith('/api/v1/editorial') and not k.startswith('/api/v1/editorial/media') for m in v]; med = [(m, k) for k, v in p.items() if k.startswith('/api/v1/editorial/media') for m in v]; print(len(e), len(med), '/api/v1/editorial/quotas/media' in p, any('/api/v1/media' in k for k in p))" 2>&1 | Out-String).Trim()
@@ -307,6 +313,78 @@ if ($Stage -eq 'e2') {
     Result "web_vitest" ($okAll -and $okMedia) "code=$(Step 'VITEST')/$(Step 'VITEST_MEDIA') réussis=$($vt.Groups[1].Value) dont médias=$($vm.Groups[1].Value)"
     Result "web_build_production" ((Step "BUILD") -eq "0") "build=$(Step 'BUILD')"
     Result "web_aucun_secret_cote_navigateur" ((Step "BUNDLE") -eq "propre") "JavaScript client : $(Step 'BUNDLE')"
+}
+
+# -----------------------------------------------------------------------------
+# 10-12. E3 — parcours Playwright sur la pile réelle, sauvegarde et restauration isolée, documentation
+# -----------------------------------------------------------------------------
+if ($Stage -eq 'e3') {
+    Log ""; Log ">>> E3 : 24 parcours Playwright (pile réelle, ClamAV réel), sauvegarde et restauration isolée"
+    $e3Files = @("apps\web\e2e\medias.spec.ts", "scripts\e2e_media_setup.py", "scripts\media_backup.py", "scripts\backup-restore-media.ps1", "infra\backup\Dockerfile")
+    $e3Missing = @($e3Files | Where-Object { -not (Test-Path -LiteralPath (Join-Path $root $_)) })
+    Result "fichiers_e3_presents" ($e3Missing.Count -eq 0) "absents=$($e3Missing -join ',')"
+    docker compose --profile media up -d --wait 2>&1 | Out-Null
+    # Fichiers de test et comptes FICTIFS dans un dossier temporaire (mots de passe jamais affichés).
+    $fx = Join-Path $env:TEMP "nl-e2e-media-$stamp"
+    New-Item -ItemType Directory -Force $fx | Out-Null
+    $setupOut = (docker run --rm --network nurselearn_default -v "${root}:/repo" -v "${fx}:/fixtures" -w /repo `
+        -e API_URL=http://api:8000 -e "ADMIN_DSN=postgresql://${PGU}:${PGPW}@postgres:5432/${PGDB}" `
+        -e "REDIS_URL=redis://:$($envVars['REDIS_PASSWORD'])@redis:6379/0" -e S3_ENDPOINT=http://s3:9000 `
+        -e S3_UPLOADER_KEY=nl-api-uploader -e "S3_UPLOADER_SECRET=$($envVars['S3_API_SECRET_KEY'])" `
+        -e QUARANTINE_BUCKET=nl-media-quarantine -e FIXTURES_DIR=/fixtures -e PYTHONDONTWRITEBYTECODE=1 `
+        python:3.12-slim sh -c "pip install -q --disable-pip-version-check --root-user-action=ignore -e services/api imageio-ffmpeg >/dev/null 2>&1 && python scripts/e2e_media_setup.py > /fixtures/setup.json" 2>&1 | Out-String)
+    $setup = $null
+    try { $setup = Get-Content (Join-Path $fx "setup.json") -Raw | ConvertFrom-Json } catch { $setup = $null }
+    $fxFiles = @(Get-ChildItem $fx -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne "setup.json" }).Count
+    Result "preparation_donnees_fictives" ($null -ne $setup -and $setup.infectedMedia -and $fxFiles -eq 6) "comptes=$(if ($setup) { @($setup.accounts.PSObject.Properties).Count } else { 0 }) fichiers=$fxFiles $((($setupOut -split "`n") | Select-Object -Last 2) -join ' ')"
+    $cap = Join-Path $logDir "captures-2.2.3e-$stamp"
+    New-Item -ItemType Directory -Force $cap | Out-Null
+    $pwScript = 'npm ci --no-audit --no-fund --silent >/dev/null 2>&1; npx playwright install --with-deps chrome >/dev/null 2>&1; echo NL_CHROME=$?; npx playwright test --project=chrome-media --reporter=list,json; echo NL_PLAYWRIGHT=$?'
+    $pw = (docker run --rm --network nurselearn_default -v "${root}:/repo" -v /repo/apps/web/node_modules -v "${fx}:/fixtures" -v "${cap}:/captures" -w /repo/apps/web `
+        -e E2E_BASE_URL=http://web:3000 -e E2E_MEDIA_FILE=/fixtures/setup.json -e E2E_MEDIA_FILES=/fixtures -e E2E_CAPTURES=/captures `
+        -e CI=1 -e NO_COLOR=1 -e PLAYWRIGHT_JSON_OUTPUT_NAME=/captures/resultats-playwright.json node:22-bookworm sh -c $pwScript 2>&1 | Out-String)
+    $pw = $pw -replace "\x1b\[[0-9;]*m", ''
+    $report = $null
+    try { $report = Get-Content (Join-Path $cap "resultats-playwright.json") -Raw | ConvertFrom-Json } catch { $report = $null }
+    $specs = @()
+    function Specs($suite) { foreach ($s in @($suite.specs)) { if ($s) { $script:specs += $s } }; foreach ($c in @($suite.suites)) { if ($c) { Specs $c } } }
+    if ($report) { foreach ($s in @($report.suites)) { Specs $s } }
+    foreach ($s in ($specs | Sort-Object title)) {
+        $num = ($s.title -split ' ')[0]
+        Result "e2e_$num" ([bool]$s.ok) $s.title
+        if (-not $s.ok) {
+            $err = @($s.tests | ForEach-Object { $_.results } | ForEach-Object { $_.error.message } | Where-Object { $_ }) | Select-Object -First 1
+            if ($err) { Log ("      " + (($err -split "`n" | Select-Object -First 3) -join ' | ')) }
+        }
+    }
+    $st = if ($report) { $report.stats } else { $null }
+    Result "playwright_24_parcours_sans_echec_ni_saut" ($st -and [int]$st.expected -eq 24 -and [int]$st.unexpected -eq 0 -and [int]$st.skipped -eq 0 -and [int]$st.flaky -eq 0) "réussis=$($st.expected) échecs=$($st.unexpected) sautés=$($st.skipped) instables=$($st.flaky) chrome=$([regex]::Match($pw, 'NL_CHROME=(\d+)').Groups[1].Value)"
+    $shots = @(Get-ChildItem $cap -Filter *.png -ErrorAction SilentlyContinue).Count
+    Result "captures_des_interfaces" ($shots -ge 10) "$shots captures dans $(Split-Path $cap -Leaf)"
+    # Sauvegarde chiffrée et restauration isolée (D22).
+    $bkStart = Get-Date
+    powershell -ExecutionPolicy Bypass -File "$root\scripts\backup-restore-media.ps1" | Out-Null
+    $bkFile = Get-ChildItem "$logDir\backup-restore-*.json" | Where-Object { $_.LastWriteTime -ge $bkStart } | Sort-Object LastWriteTime | Select-Object -Last 1
+    $bkr = $null
+    if ($bkFile) { try { $bkr = Get-Content $bkFile.FullName -Raw | ConvertFrom-Json } catch { $bkr = $null } }
+    if (-not $bkr) {
+        Result "sauvegarde_restauration_executee" $false "aucun résultat"
+    } else {
+        $r = $bkr.restauration
+        Result "sauvegarde_chiffree_manifeste" ([bool]$bkr.backup.ok -and $bkr.archive_hors_git -and $bkr.cle_absente_du_manifeste) "archive=$($bkr.backup.archive) ($([math]::Round([double]$bkr.backup.archive_bytes / 1MB, 1)) Mio) objets=$($bkr.backup.objects | ConvertTo-Json -Compress) médias=$($bkr.backup.media) rattachements=$($bkr.backup.attachments)"
+        Result "sauvegarde_integrite_verifiee" ([bool]$bkr.verification.normal.ok) "empreinte=$($bkr.verification.normal.hash_ok) déchiffrement=$($bkr.verification.normal.decrypted) membres=$($bkr.verification.normal.members)"
+        Result "sauvegarde_alteration_et_mauvaise_cle_refusees" ((-not $bkr.verification.tamper.ok) -and (-not $bkr.verification.'wrong-key'.ok) -and -not $bkr.verification.tamper.decrypted -and -not $bkr.verification.'wrong-key'.decrypted) "altération=$($bkr.verification.tamper.decrypted) mauvaise_clé=$($bkr.verification.'wrong-key'.decrypted)"
+        Result "restauration_isolee_conforme" ([bool]$r.ok) "tables=$($r.tables_identiques) rattachements=$($r.rattachements_coherents) empreintes=$($r.empreintes_conformes) sains=$($r.objets_sains_presents) quarantaine=$($r.objets_quarantaine_presents) états=$($r.etats_antivirus_identiques) verdicts=$($r.verdicts_sains_tracables) D14=$($r.permissions_d14_conservees) verify_head=$($r.verify_head)"
+        if (-not $r.ok -and $r.ecarts_objets) { Log "      écarts : $($r.ecarts_objets | ConvertTo-Json -Compress)" }
+        Result "restauration_sans_volume_reseau_interne" ([bool]$bkr.restauration_sans_volume -and $bkr.reseau_isole -and $bkr.base_de_travail_injoignable) "sans volume=$($bkr.restauration_sans_volume) réseau interne=$($bkr.reseau_isole) base de travail injoignable=$($bkr.base_de_travail_injoignable)"
+        Result "base_de_travail_inchangee_aucun_volume" ([bool]$bkr.base_de_travail_inchangee -and $bkr.aucun_volume_cree_ni_supprime) "base=$($bkr.base_de_travail_inchangee) volumes=$($bkr.aucun_volume_cree_ni_supprime)"
+    }
+    # Dossier TEMPORAIRE des fichiers de test et des comptes fictifs (aucune donnée de la pile).
+    Remove-Item -LiteralPath $fx -Recurse -Force -ErrorAction SilentlyContinue
+    Result "fichiers_temporaires_retires" (-not (Test-Path -LiteralPath $fx)) ""
+    $docs = @("docs\VALIDATION-PHASE2.2.3E.md", "docs\PHASE2.2.4-READINESS.md", "docs\GUIDE-SAUVEGARDE-RESTAURATION-MEDIAS.md", "docs\GUIDE-MEDIAS-EDITORIAUX.md")
+    $docsMissing = @($docs | Where-Object { -not (Test-Path -LiteralPath (Join-Path $root $_)) })
+    Result "documentation_2_2_3e_presente" ($docsMissing.Count -eq 0) "absents=$($docsMissing -join ',')"
 }
 
 # -----------------------------------------------------------------------------

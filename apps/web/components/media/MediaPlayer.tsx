@@ -4,7 +4,8 @@
 // Toutes les adresses pointent vers le relais Web de même origine (/relais/medias/…) : jamais vers le
 // stockage, jamais avec un jeton. Chaque requête (y compris chaque plage vidéo) est revérifiée par
 // media-delivery ; une révocation ou une session expirée interrompt la lecture et l'interface l'annonce.
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { getMediaDictionary } from "@/lib/i18n-media";
 import type { Locale } from "@/lib/i18n";
@@ -35,6 +36,14 @@ export function MediaPlayer({
   const t = getMediaDictionary(locale).player;
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const router = useRouter();
+  // Après un échec, la page serveur est relue une fois : l'état affiché (révoqué, bloqué) suit le
+  // refus de la diffusion au lieu de rester « disponible ».
+  useEffect(() => {
+    if (!failed) return;
+    const timer = window.setTimeout(() => router.refresh(), 1500);
+    return () => window.clearTimeout(timer);
+  }, [failed, router]);
   const url = (id: string) =>
     source.mode === "preview" ? relay.preview(id) : relay.content(id, source.release, source.lessonVersion);
   const alt = media.alt_text?.[locale] ?? media.alt_text?.fr ?? "";
@@ -92,7 +101,8 @@ export function MediaPlayer({
           className="w-full max-w-3xl rounded-md border border-border bg-black"
           data-testid="video"
         >
-          <source src={url(media.id)} type="video/mp4" />
+          {/* Un refus au (re)chargement est signalé sur <source>, une coupure en cours sur <video>. */}
+          <source src={url(media.id)} type="video/mp4" onError={() => setFailed(true)} />
           {captions.map((c, i) => (
             <track key={c.id} kind="captions" src={url(c.id)} srcLang={c.srclang} label={c.label} default={i === 0} />
           ))}

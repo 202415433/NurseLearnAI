@@ -299,3 +299,11 @@ Les 5 échecs, et leur correction :
 - Aucune purge ni suppression automatique d'objet.
 
 Prérequis de la suite : [PHASE2.2.3D-READINESS.md](PHASE2.2.3D-READINESS.md).
+
+> **Mise à jour 2.2.3-e — notification FreshClam → clamd.** Dans les images officielles, clamd créait
+> son socket dans `/tmp`, propre à chaque conteneur : freshclam ne pouvait jamais notifier clamd, qui ne
+> rechargeait pas les nouvelles signatures (seul le contrôle de fraîcheur de 48 h, fermé par défaut, en
+> protégeait). Corrigé par un `clamd.conf` partagé en lecture seule et un socket dédié
+> (`/run/clamav/clamd.sock`, volume `clamav-sock`, 0660, `clamav`), sans `/tmp` partagé ni port ajouté ;
+> rechargement effectif vérifié sous Windows (version chargée = version sur disque) et en CI —
+> [VALIDATION-PHASE2.2.3E.md](VALIDATION-PHASE2.2.3E.md) § 4.

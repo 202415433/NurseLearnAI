@@ -36,6 +36,14 @@ La Phase 5 (mobile) démarre dès que l'API de la Phase 2 est stable, en parall�
 | **6 — Monétisation** | Plans, Stripe (mode test), droits d'accès, établissements, cohortes, rapports, gestion des formateurs | Webhooks signés et idempotents testés ; aucun paiement réel possible sans `PAYMENTS_ENABLED=true` + clés live |
 | **7 — Production** | Tests de charge, audit de sécurité externe, AIPD, validation éditoriale finale, déploiement, supervision, guides (installation Windows, déploiement, technique, utilisateur) | Rapport d'audit sans faille critique ouverte ; restauration de sauvegarde testée ; plan de réponse aux incidents |
 
+## Avancement de la Phase 2 (lot 2.2.3 — médias protégés)
+
+| Étape | État |
+|---|---|
+| 2.2.3-a à 2.2.3-d | Intégrées (fondations 0007, téléversement, ClamAV 0008, D14 0009, R3, diffusion `media-delivery`) |
+| 2.2.3-e | Développée : 0010 (rattachement contrôlé, conservation légale), FreshClam, interfaces des médias, relais Web, 24 parcours Playwright sur la pile réelle, sauvegarde chiffrée et restauration isolée (première brique du critère « restauration de sauvegarde testée » de la Phase 7) — [validation](VALIDATION-PHASE2.2.3E.md) |
+| 2.2.4 | Préparée seulement — [PHASE2.2.4-READINESS.md](PHASE2.2.4-READINESS.md) |
+
 ## Ce qui est volontairement reporté
 
 3D (atlas et simulations), visioconférence intégrée, langues supplémentaires, applications institutionnelles hors ligne complètes, classements publics.

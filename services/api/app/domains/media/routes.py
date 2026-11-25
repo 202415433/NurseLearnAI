@@ -139,8 +139,11 @@ async def _rate_limited(request: Request, settings: Settings, ctx: AuthContext, 
     if redis is None:
         raise media_problem(503, "media_unavailable", "Service de téléversement indisponible", "service-unavailable")
     hour = int(time.time() // 3600)
-    checks = [(f"nl:media:rate:user:{ctx.user_id}:{hour}", settings.media_uploads_per_hour_user)]
-    checks.append((f"nl:media:rate:org:{org or 'platform'}:{hour}", settings.media_uploads_per_hour_org))
+    # Espace de noms dérivé de RATE_LIMIT_SALT (ou de la base) : deux piles partageant un Redis (tests,
+    # recette) ne consomment jamais les compteurs l'une de l'autre (même règle que la diffusion, 2.2.3-d).
+    ns = hashlib.sha256(settings.effective_rate_limit_salt.encode()).hexdigest()[:8]
+    checks = [(f"nl:media:rate:{ns}:user:{ctx.user_id}:{hour}", settings.media_uploads_per_hour_user)]
+    checks.append((f"nl:media:rate:{ns}:org:{org or 'platform'}:{hour}", settings.media_uploads_per_hour_org))
     try:
         async with redis.pipeline(transaction=True) as pipe:
             for key, _ in checks:

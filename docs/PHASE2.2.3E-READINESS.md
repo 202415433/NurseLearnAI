@@ -1,5 +1,8 @@
 # Préparation — Étape 2.2.3-e : intégration de bout en bout, interfaces, sécurité, restauration
 
+> **Réalisé** : voir [VALIDATION-PHASE2.2.3E.md](VALIDATION-PHASE2.2.3E.md) (D3-3 corrigé par la migration
+> 0010, relais Web, interfaces, parcours de bout en bout, sauvegarde et restauration). Texte d'origine :
+>
 > Préparation seulement : **aucun développement 2.2.3-e n'est engagé**. Il faut d'abord que 2.2.3-d
 > soit intégrée, puis une autorisation explicite. Références : [plan 2.2.3](PHASE2.2.3-PLAN.md) § 8 ·
 > [validation 2.2.3-d](VALIDATION-PHASE2.2.3D.md).

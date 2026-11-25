@@ -4,8 +4,7 @@ Branche : `phase-2.2.3e-media-management-ui` (depuis `main` @ `e3a3ec3`, 2.2.3-d
 Trois sous-lots successifs, un commit chacun : **E1** correctifs préalables · **E2** interfaces · **E3** validation de bout en bout.
 Aucun développement 2.2.4 ni tuteur IA ; aucune URL S3 ; aucun jeton autonome ; aucune publication médicale.
 
-> **État : E1 validé (32/32 Windows) ; E2 développé, validation Windows `-Stage e2` en attente.** E3 ne
-> démarre qu'après une validation E2 verte.
+> **État : E1 validé (32/32 Windows) ; E2 validé (47/47 Windows) ; E3 développé, validation Windows `-Stage e3` en attente.**
 
 ## 1. Audit préalable
 
@@ -214,4 +213,113 @@ build, JavaScript client propre. Deux échecs, tous deux dans le script (aucun d
   PowerShell 5.1 et Docker → motifs ASCII seulement, `NO_COLOR=1`, total et sous-ensemble médias lus
   séparément (seuils inchangés : ≥ 64 et ≥ 30). Vérifié en local : 64 et 30.
 
-*Second passage Windows E2 : à compléter.*
+**Second passage Windows E2 (2026-11-25, `db84cd7`) : 47/47, 0 échec — validation E2 VERTE.** Vitest 64
+(dont 30 médias), relais 8/8, pytest 155 (codes 0/0), non-régression complète verte. Journal
+`phase2.2.3e-20261125-005936.log`.
+
+## 7. E3 — Validation de bout en bout
+
+### 7.1 Parcours Playwright (`apps/web/e2e/medias.spec.ts`, projet `chrome-media`)
+
+Pile réelle (Next.js, API, media-delivery, PostgreSQL, Redis, RustFS, **ClamAV réel**, media-worker),
+Google Chrome (décodage H.264), exécution en série, axe WCAG 2.0–2.2 AA sur chaque écran visité.
+Données **fictives** préparées par [`scripts/e2e_media_setup.py`](../scripts/e2e_media_setup.py) :
+établissements « Établissement fictif E2E A/B », sept comptes `e2e-medias-*@example.test` **stables**
+(inscrits une seule fois ; mot de passe aléatoire renouvelé à chaque passage, jamais affiché, transmis par
+un fichier temporaire supprimé en fin de validation), leçons en brouillon et soumise, média de
+l'établissement B, fichier de test EICAR construit **en mémoire** et déposé en quarantaine (cas adverse :
+aucun format ne l'accepterait), vidéo MP4 H.264 réelle de 40 s (20 Mio) générée par ffmpeg.
+
+| # | Parcours | Vérifications principales |
+|---|---|---|
+| 01 | Connexion auteur | formulaire réel, lien « Édition », axe |
+| 02 | Médiathèque | quotas, limites, filtres format/état, axe |
+| 03 | Téléversement image | réservation + envoi par le relais, progression, aucune requête hors origine |
+| 04 | Quarantaine | état reçu = attente ; jamais « disponible » ; relais 404 tant que non sain |
+| 05 | ClamAV réel | verdict `clean` par media-worker |
+| 06 | Média sain | aperçu, texte alternatif, image chargée, axe |
+| 07 | Rattachement | brouillon, message, élément rattaché, axe |
+| 08 | Aperçu éditorial | image du sélecteur servie par le relais |
+| 09 | MP4 Range | 206 `Content-Range`, 416, lecture réelle, recherche à 30 s |
+| 10 | PDF | téléchargement (`%PDF`), `Content-Disposition: attachment` |
+| 11 | VTT | piste `captions`, `text/vtt`, `textTracks` = 1, axe |
+| 12 | Infecté | EICAR → `infected` (ClamAV réel), bloqué, relais 404, non rattachable |
+| 13 | Non analysé | réservation sans fichier : relais 404, aperçu indisponible, non proposé, abandon 204 |
+| 14 | Inter-établissements | 404 page, relais et sélecteur ; aucune mention de l'autre établissement |
+| 15 | Édition figée | version soumise : lecture seule, aucun bouton, axe |
+| 16 | Révocation pendant la lecture | relecteur révoque pendant la lecture → requête suivante 404 → alerte, page relue « Révoqué — bloqué » |
+| 17 | Session révoquée | cookie HttpOnly ; après déconnexion, l'ancien identifiant rejoué → 401 |
+| 18 | Limites de débit | 429 avec `Retry-After`, aucun autre statut |
+| 19 | Quota dépassé | 413 `quota_exceeded`, message explicite, réservations libérées |
+| 20 | Conservation légale | motif obligatoire, pose/levée, historique (2 événements), média révoqué toujours 404, invisible pour un auteur |
+| 21 | Clavier | lien d'évitement, filtre, ouverture d'un média, champ fichier et bouton atteignables |
+| 22 | FR/EN | libellés, états, `lang` |
+| 23 | Mobile 390 px | aucun débordement horizontal (4 écrans), axe |
+| 24 | Aucune fuite | aucun jeton, `Bearer`, compartiment, `X-Amz`, adresse interne dans les URL, en-têtes, HTML, JS, JSON ; `document.cookie` sans session ; stockage local vide de jeton |
+
+Mise au point locale (pile locale, ClamAV imité, Chrome) : **24/24**. Deux corrections issues de ces
+parcours : (1) sur `<source>`, une erreur de chargement n'atteint pas `<video>` → gestionnaire ajouté ;
+(2) après une interruption, le lecteur relit la page serveur pour que l'état affiché suive (« Révoqué »).
+
+### 7.2 Correctif : compteurs de téléversement par pile
+
+Les compteurs horaires de téléversement (`nl:media:rate:*`) étaient partagés entre toutes les piles
+utilisant le même Redis : les tests pytest (≈ 110 téléversements par fichier de tests) consommaient le
+quota horaire « plateforme » (300) de la pile réelle, provoquant des 429 étrangers au produit. Ils sont
+désormais préfixés par l'espace de noms de la pile (`RATE_LIMIT_SALT`, sinon dérivé de la base), comme la
+diffusion depuis 2.2.3-d. Limite inchangée dans chaque pile ; test
+`test_upload_rate_counters_are_namespaced_per_stack`.
+
+### 7.3 Sauvegarde chiffrée et restauration isolée (D22)
+
+Voir [GUIDE-SAUVEGARDE-RESTAURATION-MEDIAS.md](GUIDE-SAUVEGARDE-RESTAURATION-MEDIAS.md). Mise au point
+locale : archive 128 Mio (173 objets), déchiffrement authentifié ; altération et mauvaise clé **refusées** ;
+restauration isolée : tables, révision, états antivirus, verdicts, rattachements, permissions D14 et
+`verify_head` conformes. Défaut trouvé et corrigé : sans `--create`, les droits de la base (révocation de
+`TEMPORARY`, `CONNECT` des rôles applicatifs) n'étaient pas sauvegardés et `verify_head` refusait la base
+restaurée. La vérification des objets a aussi détecté, en local, les objets perdus par le stockage S3
+imité redémarré (preuve que le rapprochement base ↔ objets fonctionne) ; sous Windows, RustFS est
+persistant.
+
+Constat annexe corrigé : `.dockerignore` n'excluait pas `backups/` — les sauvegardes locales (dont les
+dumps D14 en clair) étaient envoyées au moteur Docker à chaque construction (jamais copiées dans une
+image). Exclues désormais, avec les rapports Playwright.
+
+### 7.4 Validation Windows E3
+
+```powershell
+cd C:\NurseLearnAI-git
+powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.3e.ps1 -Stage e3
+```
+
+*Résultat Windows E3 : à compléter.*
+
+## 8. Registre des risques résiduels (2.2.3-e)
+
+| Id | Risque | État après 2.2.3-e |
+|---|---|---|
+| R1 | Migrations exécutées avec des privilèges élevés | **Conservé** — voir [D14-RESIDUAL-RISKS.md](D14-RESIDUAL-RISKS.md) |
+| R2 | Lecture large des tables par l'API | **Conservé** — idem |
+| R3-1 | L'API peut remplacer ou supprimer tout objet de quarantaine | **Conservé** (détecté par le worker) |
+| R3-2 | Le worker peut modifier ou supprimer des objets sains | **Conservé** — WORM/versionnement avant production ; la restauration vérifiée (D22) limite l'impact |
+| R3-3 | Clé racine RustFS dans `.env` local | **Conservé** — coffre de secrets en production |
+| R3-4 | Compatibilité RustFS à revérifier à chaque version | **Conservé** (image épinglée) |
+| D3-1 | Octets déjà transmis avant une révocation | **Conservé** ; mesuré via le relais (E2-1) |
+| D3-2 | Diffusion en `nl_api` (lecture large) | **Conservé** |
+| D3-3 | Rattachement et `legal_hold` sans route d'API | **Corrigé** (0010, fonctions contrôlées, routes, interfaces) |
+| D3-4 | Pas de nouvelle analyse périodique des médias sains | **Conservé** |
+| D3-5 | Limite par adresse partagée API/diffusion | **Conservé** |
+| D3-6 | Apprenants d'établissement sans accès aux contenus privés | **Conservé** (2.2.4) |
+| D3-7 | Intégrité par métadonnée seulement | **Réduit** : la restauration isolée recalcule le SHA-256 des octets ; pas encore de relecture périodique en production |
+| E2-1 | Octets en tampon livrés après une révocation (≈ 10 Mio mesurés) | Accepté, documenté |
+| E2-2 | 200 sans `Content-Length` via le relais | Lecture et recherche vérifiées (E3 09, 16) |
+| E2-3 | Intégration apprenant (page de leçon) non développée | 2.2.4 / 2.2.5 |
+| E2-4 | Navigateur sans `Sec-Fetch-Site`/`Origin` admis en lecture | Mutations : même origine exigée |
+| E3-1 | Sauvegarde lit la quarantaine avec `nl-media-scanner` (qui peut écrire dans le sain) | Identité de sauvegarde dédiée en lecture seule à créer |
+| E3-2 | Clé de sauvegarde dans `.env` local ; aucune copie hors site | Coffre, rotation, copie chiffrée hors site |
+| E3-3 | Sauvegarde manuelle, non atomique entre base et objets | Planification, fenêtre calme, rapprochement (déjà détecté) |
+| E3-4 | Comptes de test `e2e-medias-*@example.test` conservés dans la base de développement | Fictifs, rôles de test ; jamais en production |
+
+**Le système n'est pas prêt pour la production.** Risques bloquants avant toute mise en production :
+R3-2 et R3-3 (stockage et secrets), D3-2 et D3-4, E3-1 à E3-3 (sauvegardes de production : identité dédiée,
+gestion de la clé, copie hors site, planification, procédure de bascule), MFA et revue de sécurité externe.

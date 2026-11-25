@@ -479,6 +479,21 @@ def test_rate_limit_per_user(sync_engine: Engine) -> None:
         assert codes == [201, 201, 429]
 
 
+def test_upload_rate_counters_are_namespaced_per_stack(sync_engine: Engine) -> None:
+    """2.2.3-e : deux piles partageant un Redis (tests et recette) ont des compteurs distincts ; la limite
+    reste entière dans chaque pile (aucun relâchement : un même espace de noms partage ses compteurs)."""
+    salt_a, salt_b = f"pile-a-{uuid.uuid4().hex}", f"pile-b-{uuid.uuid4().hex}"
+    with TestClient(create_app(media_settings(media_uploads_per_hour_user=1, rate_limit_salt=salt_a))) as a:
+        acct = account(a, sync_engine, ("instructor", None))
+        assert reserve(a, acct, "document", "application/pdf", 10).status_code == 201
+        assert reserve(a, acct, "document", "application/pdf", 10).status_code == 429
+        # Même base, même session : seule la pile (espace de noms des compteurs) change.
+        with TestClient(create_app(media_settings(media_uploads_per_hour_user=1, rate_limit_salt=salt_b))) as b:
+            assert reserve(b, acct, "document", "application/pdf", 10).status_code == 201
+        with TestClient(create_app(media_settings(media_uploads_per_hour_user=1, rate_limit_salt=salt_a))) as a2:
+            assert reserve(a2, acct, "document", "application/pdf", 10).status_code == 429
+
+
 # =============================================================================================
 # Interruptions, reprises, stockage indisponible
 # =============================================================================================

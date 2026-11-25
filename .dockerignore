@@ -6,3 +6,7 @@
 .env
 .env.*
 docs/validation-logs
+# Sauvegardes locales (dumps D14, archives chiffrées D22) et rapports de tests : jamais envoyés au moteur Docker
+backups
+apps/web/test-results
+apps/web/playwright-report

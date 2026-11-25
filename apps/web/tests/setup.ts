@@ -9,4 +9,7 @@ vi.mock("next/link", () => ({
   useLinkStatus: () => ({ pending: false }),
 }));
 
+// next/navigation : routeur factice (les lecteurs relisent la page serveur après un échec).
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }) }));
+
 afterEach(() => cleanup());
