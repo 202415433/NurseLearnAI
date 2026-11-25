@@ -204,4 +204,14 @@ cd C:\NurseLearnAI-git
 powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.3e.ps1 -Stage e2
 ```
 
-*Résultat Windows E2 : à compléter.*
+**Premier passage Windows E2 (2026-11-25, `9fa3b97`) : 45/47.** Tout E1 vert (non-régression complète,
+0010, FreshClam 6/6, pytest 155 tests codes 0/0), bibliothèque et quotas 3/3, relais 8/8 (401, 404, 403
+intersite et CSRF, 405, sans cache ni cookie ni fuite, destination fixe joignable), typecheck/lint/format,
+build, JavaScript client propre. Deux échecs, tous deux dans le script (aucun dans le produit) :
+- `fichiers_e2_presents` : `Test-Path` traite les crochets du dossier Next.js `[id]` comme des jokers →
+  `Test-Path -LiteralPath` ;
+- `web_vitest` : Vitest a réussi (code 0) mais le motif de lecture contenait « ✓ », altéré entre
+  PowerShell 5.1 et Docker → motifs ASCII seulement, `NO_COLOR=1`, total et sous-ensemble médias lus
+  séparément (seuils inchangés : ≥ 64 et ≥ 30). Vérifié en local : 64 et 30.
+
+*Second passage Windows E2 : à compléter.*

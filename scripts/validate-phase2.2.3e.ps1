@@ -71,7 +71,10 @@ Result "migrations_historiques_inchangees" ([string]::IsNullOrWhiteSpace($hist))
 $added = (git diff --diff-filter=A --name-only origin/main...HEAD -- database/schema services/api/alembic/versions 2>$null) -join " "
 Result "seule_migration_ajoutee_0010" ($added -eq "database/schema/0010_media_editorial_permissions.sql database/schema/0010_media_editorial_permissions_down.sql services/api/alembic/versions/0010_media_editorial_permissions.py") $added
 if ($Stage -eq 'e2') {
-    Result "fichiers_e2_presents" ((Test-Path "$root\apps\web\lib\media-relay.ts") -and (Test-Path "$root\apps\web\app\relais\medias\[id]\apercu\route.ts") -and (Test-Path "$root\apps\web\components\media\MediaUploader.tsx") -and (Test-Path "$root\services\api\app\domains\media\quotas.py") -and (Test-Path "$root\scripts\web_relay_probe.mjs")) ""
+    # -LiteralPath : les crochets des dossiers Next.js ([id]) sont des jokers pour Test-Path.
+    $e2Files = @("apps\web\lib\media-relay.ts", "apps\web\app\relais\medias\[id]\apercu\route.ts", "apps\web\components\media\MediaUploader.tsx", "services\api\app\domains\media\quotas.py", "scripts\web_relay_probe.mjs")
+    $e2Missing = @($e2Files | Where-Object { -not (Test-Path -LiteralPath (Join-Path $root $_)) })
+    Result "fichiers_e2_presents" ($e2Missing.Count -eq 0) "absents=$($e2Missing -join ',')"
 }
 Result "fichiers_e1_presents" ((Test-Path "$root\services\api\app\domains\media\attachments.py") -and (Test-Path "$root\infra\clamav\clamd.conf") -and (Test-Path "$root\database\tests\test_media_editorial_permissions.py") -and (Test-Path "$root\services\api\tests\api\test_media_attachments.py")) ""
 
@@ -286,15 +289,20 @@ if ($Stage -eq 'e2') {
         Result "relais_diffusion_interne_joignable" ($p.diffusion_interne_joignable -eq 200) "media-delivery /ready=$($p.diffusion_interne_joignable)"
     }
     # Aucun guillemet double dans la commande (PowerShell 5.1 les retire des arguments natifs).
-    $webScript = 'npm ci --no-audit --no-fund --silent >/dev/null 2>&1; echo NL_CI=$?; npm run typecheck >/tmp/t 2>&1; echo NL_TYPECHECK=$?; npm run lint >/tmp/l 2>&1; echo NL_LINT=$?; tail -n 5 /tmp/l; npm run format:check >/tmp/f 2>&1; echo NL_FORMAT=$?; npx vitest run --reporter=verbose >/tmp/v 2>&1; echo NL_VITEST=$?; grep -E ''Tests |Test Files|(✓|×) tests/media'' /tmp/v; npm run build >/tmp/b 2>&1; echo NL_BUILD=$?; tail -n 3 /tmp/b; if grep -rlE ''Bearer|MEDIA_DELIVERY|media-delivery|nl_session|API_INTERNAL|nl-media-|X-Amz|presign'' .next/static; then echo NL_BUNDLE=fuite; else echo NL_BUNDLE=propre; fi'
-    $w = (docker run --rm -v "${root}:/repo" -v /repo/apps/web/node_modules -v /repo/apps/web/.next -w /repo/apps/web -e NEXT_TELEMETRY_DISABLED=1 node:22-bookworm sh -c $webScript 2>&1 | Out-String)
+    $webScript = 'npm ci --no-audit --no-fund --silent >/dev/null 2>&1; echo NL_CI=$?; npm run typecheck >/tmp/t 2>&1; echo NL_TYPECHECK=$?; npm run lint >/tmp/l 2>&1; echo NL_LINT=$?; tail -n 5 /tmp/l; npm run format:check >/tmp/f 2>&1; echo NL_FORMAT=$?; npx vitest run >/tmp/v 2>&1; echo NL_VITEST=$?; grep -E ''Tests '' /tmp/v | sed ''s/^/NL_VT_ALL /''; npx vitest run tests/media.test.ts tests/media-components.test.tsx >/tmp/m 2>&1; echo NL_VITEST_MEDIA=$?; grep -E ''Tests '' /tmp/m | sed ''s/^/NL_VT_MEDIA /''; npm run build >/tmp/b 2>&1; echo NL_BUILD=$?; tail -n 3 /tmp/b; if grep -rlE ''Bearer|MEDIA_DELIVERY|media-delivery|nl_session|API_INTERNAL|nl-media-|X-Amz|presign'' .next/static; then echo NL_BUNDLE=fuite; else echo NL_BUNDLE=propre; fi'
+    $w = (docker run --rm -v "${root}:/repo" -v /repo/apps/web/node_modules -v /repo/apps/web/.next -w /repo/apps/web -e NEXT_TELEMETRY_DISABLED=1 -e NO_COLOR=1 -e CI=1 node:22-bookworm sh -c $webScript 2>&1 | Out-String)
+    $w = $w -replace "\x1b\[[0-9;]*m", ''  # codes couleur éventuels
     function Step([string]$k) { $m = [regex]::Match($w, "NL_$k=(\S+)"); if ($m.Success) { $m.Groups[1].Value } else { "?" } }
     Result "web_dependances_installees" ((Step "CI") -eq "0") "npm ci=$(Step 'CI')"
     Result "web_typecheck_lint_format" ((Step "TYPECHECK") -eq "0" -and (Step "LINT") -eq "0" -and (Step "FORMAT") -eq "0") "typecheck=$(Step 'TYPECHECK') lint=$(Step 'LINT') format=$(Step 'FORMAT')"
-    $vt = [regex]::Match($w, "Tests\s+(\d+) passed(?: \((\d+)\))?")
-    $vtFail = [regex]::Match($w, "Tests\s+.*?(\d+) failed")
-    $mediaT = ([regex]::Matches($w, "✓ tests/media")).Count
-    Result "web_vitest" ((Step "VITEST") -eq "0" -and $vt.Success -and [int]$vt.Groups[1].Value -ge 64 -and -not $vtFail.Success -and $mediaT -ge 30) "code=$(Step 'VITEST') réussis=$($vt.Groups[1].Value) dont médias=$mediaT"
+    # Aucun caractère non ASCII dans les motifs (sortie Docker relue par PowerShell 5.1).
+    $vt = [regex]::Match($w, "NL_VT_ALL\s+Tests\s+(\d+) passed")
+    $vtFail = [regex]::Match($w, "NL_VT_ALL\s+Tests\s+.*?(\d+) failed")
+    $vm = [regex]::Match($w, "NL_VT_MEDIA\s+Tests\s+(\d+) passed")
+    $vmFail = [regex]::Match($w, "NL_VT_MEDIA\s+Tests\s+.*?(\d+) failed")
+    $okAll = (Step "VITEST") -eq "0" -and $vt.Success -and [int]$vt.Groups[1].Value -ge 64 -and -not $vtFail.Success
+    $okMedia = (Step "VITEST_MEDIA") -eq "0" -and $vm.Success -and [int]$vm.Groups[1].Value -ge 30 -and -not $vmFail.Success
+    Result "web_vitest" ($okAll -and $okMedia) "code=$(Step 'VITEST')/$(Step 'VITEST_MEDIA') réussis=$($vt.Groups[1].Value) dont médias=$($vm.Groups[1].Value)"
     Result "web_build_production" ((Step "BUILD") -eq "0") "build=$(Step 'BUILD')"
     Result "web_aucun_secret_cote_navigateur" ((Step "BUNDLE") -eq "propre") "JavaScript client : $(Step 'BUNDLE')"
 }
