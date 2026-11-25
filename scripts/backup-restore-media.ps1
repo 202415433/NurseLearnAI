@@ -62,7 +62,8 @@ if (-not $b -or -not $b.ok) {
 }
 $manifest = "/backup/$($b.manifest)"
 $archive = Join-Path $root "backups\$($b.archive)"
-$result.archive_hors_git = ((git check-ignore -q "backups/$($b.archive)" 2>$null); $LASTEXITCODE -eq 0)
+git check-ignore -q "backups/$($b.archive)" 2>$null | Out-Null
+$result.archive_hors_git = ($LASTEXITCODE -eq 0)
 $result.cle_absente_du_manifeste = -not ((Get-Content (Join-Path $root "backups\$($b.manifest)") -Raw).Contains($key))
 
 # --- 4. Vérifications d'intégrité --------------------------------------------------------------
@@ -82,7 +83,9 @@ $rpw = Hex 16; $rsk = Hex 16
 docker network create --internal $net 2>&1 | Out-Null
 docker run -d --name $pg --network $net --tmpfs /var/lib/postgresql/data:size=2g -e POSTGRES_USER=nl_restore -e POSTGRES_PASSWORD=$rpw pgvector/pgvector:pg16 2>&1 | Out-Null
 docker run -d --name $s3 --network $net --tmpfs /data:size=4g -e RUSTFS_ACCESS_KEY=nl-restore -e RUSTFS_SECRET_KEY=$rsk -e RUSTFS_VOLUMES=/data -e RUSTFS_ADDRESS=0.0.0.0:9000 rustfs/rustfs:1.0.0 2>&1 | Out-Null
-for ($i = 0; $i -lt 60; $i++) { docker exec $pg pg_isready -U nl_restore -q 2>$null; if ($LASTEXITCODE -eq 0) { break }; Start-Sleep 2 }
+# Écoute TCP exigée : pendant l'initialisation, l'image démarre un serveur temporaire sur socket local seulement.
+for ($i = 0; $i -lt 90; $i++) { docker exec $pg pg_isready -h 127.0.0.1 -U nl_restore -q 2>$null; if ($LASTEXITCODE -eq 0) { break }; Start-Sleep 2 }
+Start-Sleep 2
 $mounts = ((docker inspect -f "{{range .Mounts}}{{.Type}} {{end}}" $pg $s3 2>$null) -join " ").Trim()
 $result.restauration_sans_volume = -not ($mounts -match "volume")
 $result.reseau_isole = ((docker network inspect -f "{{.Internal}}" $net 2>$null) -eq "true")

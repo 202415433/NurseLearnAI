@@ -185,7 +185,7 @@ $cid = (docker create -v "${root}:/repo" -w /repo --network nurselearn_default `
     -e NL_TEST_CLAMD_HOST=clamd -e NL_TEST_CLAMD_PORT=3310 -e "NL_TEST_SCANNER_PASSWORD=$($envVars['MEDIA_SCANNER_DB_PASSWORD'])" `
     -e "API_DB_PASSWORD=$($envVars['API_DB_PASSWORD'])" -e "NL_TEST_API_PASSWORD=$($envVars['API_DB_PASSWORD'])" -e "NL_TEST_ADMIN_DATABASE_URL=postgresql+psycopg://${PGU}:${PGPW}@postgres:5432/nl_validation_d3" `
     -e NL_TEST_PGHOST=postgres -e NL_TEST_PGPORT=5432 -e NL_TEST_PGUSER=$PGU -e PGPASSWORD=$PGPW -e PYTHONDONTWRITEBYTECODE=1 `
-    python:3.12-slim sh -c "cd services/api && pip install -q --disable-pip-version-check --root-user-action=ignore -e '.[dev]' && alembic upgrade head && python -m app.seed && DATABASE_URL=postgresql+asyncpg://nl_api:$($envVars['API_DB_PASSWORD'])@postgres:5432/nl_validation_d3 python -m pytest -v -rs -p no:cacheprovider -p no:logging tests/api/test_media_delivery.py tests/api/test_media_scan.py tests/api/test_media_upload.py tests/api/test_s3_identities.py" 2>&1).Trim()
+    python:3.12-slim sh -c "cd services/api && pip install -q --disable-pip-version-check --root-user-action=ignore -e '.[dev]' && alembic upgrade head && python -m app.seed && DATABASE_URL=postgresql+asyncpg://nl_api:$($envVars['API_DB_PASSWORD'])@postgres:5432/nl_validation_d3 python -m pytest -v -rfEs -p no:cacheprovider -p no:logging tests/api/test_media_delivery.py tests/api/test_media_scan.py tests/api/test_media_upload.py tests/api/test_s3_identities.py" 2>&1).Trim()
 docker network connect nurselearn_media-scan $cid 2>&1 | Out-Null
 $pyOut = (docker start -a $cid 2>&1 | Out-String)
 $pyCode = [int](docker inspect -f "{{.State.ExitCode}}" $cid)
@@ -194,6 +194,9 @@ Psql "DROP DATABASE IF EXISTS nl_validation_d3 WITH (FORCE)" "postgres" | Out-Nu
 $lines = @($pyOut -split "`n" | Where-Object { $_ -match '::test_\S+ (PASSED|FAILED|SKIPPED|ERROR)' } | ForEach-Object { $_.Trim() })
 foreach ($l in ($lines | Where-Object { $_ -match 'test_media_delivery' })) { Log "    $l" }
 foreach ($l in ($pyOut -split "`n" | Where-Object { $_ -match '^=+ .*(passed|failed|error).* =+$' })) { Log "    $($l.Trim())" }
+# Cause d'un échec (résumé pytest et premières lignes d'assertion), sans secret : diagnostic seulement.
+foreach ($l in ($pyOut -split "`n" | Where-Object { $_ -match '^(FAILED|ERROR) \S+ - ' } | Select-Object -First 5)) { Log "      $($l.Trim())" }
+foreach ($l in ($pyOut -split "`n" | Where-Object { $_ -match '^E\s{2,}' } | Select-Object -First 12)) { Log "      $($l.TrimEnd())" }
 # Nom distinct de « group » (alias PowerShell de Group-Object, prioritaire sur les fonctions).
 function TestsLike([string]$pattern) { @($lines | Where-Object { $_ -match 'test_media_delivery' -and $_ -match $pattern }) }
 $dl = TestsLike '.'

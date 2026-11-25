@@ -4,7 +4,7 @@
 FROM python:3.12-slim
 ENV DEBIAN_FRONTEND=noninteractive PIP_DISABLE_PIP_VERSION_CHECK=1 PYTHONDONTWRITEBYTECODE=1
 RUN apt-get update -qq \
- && apt-get install -y -qq --no-install-recommends postgresql-common ca-certificates gnupg >/dev/null \
+ && apt-get install -y -qq --no-install-recommends postgresql-common ca-certificates gnupg curl >/dev/null \
  && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null \
  && apt-get install -y -qq --no-install-recommends postgresql-client-16 >/dev/null \
  && rm -rf /var/lib/apt/lists/*

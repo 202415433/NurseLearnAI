@@ -292,7 +292,27 @@ cd C:\NurseLearnAI-git
 powershell -ExecutionPolicy Bypass -File .\scripts\validate-phase2.2.3e.ps1 -Stage e3
 ```
 
-*Résultat Windows E3 : à compléter.*
+**Premier passage Windows E3 (2026-11-25, `bf11cb9`) : 76/78.**
+
+- **24/24 parcours Playwright** sur la pile réelle (ClamAV réel : EICAR → `infected`, vidéo H.264 lue,
+  révocation pendant la lecture, quota, conservation légale, clavier, FR/EN, mobile, aucune fuite) ;
+  14 captures ; préparation des données fictives (7 comptes, 6 fichiers) ; dossier temporaire retiré.
+- E1 et E2 verts (0010, FreshClam 6/6 avec une **notification réelle observée** : 28193 → 28194, pytest
+  155, relais 8/8, Vitest 64, build, JavaScript client propre) ; intégrité intacte.
+- `non_regression_2_2_3d_et_anterieures` : **FAIL, cause environnementale** — à 08:44, Docker Desktop ne
+  joignait plus Docker Hub (`lookup registry-1.docker.io: no such host`) : la reconstruction de la pile
+  de la chaîne 1.2 a échoué, puis tous les contrôles dépendant de l'API et du site ont échoué en cascade.
+  Le réseau est revenu ensuite (E1, E2 et E3 verts sur la pile réelle). S'y ajoute un échec du premier
+  test de diffusion de la chaîne 2.2.3-d (`test_authorized_learner_gets_clean_image_with_safe_headers`),
+  **sans cause journalisée** ; les mêmes 27 tests ont réussi dans le même passage (bloc E1) et lors de
+  tous les passages précédents. Non masqué : le script 2.2.3-d journalise désormais le résumé pytest
+  (`-rfE`) et les premières lignes d'assertion de tout échec.
+- `sauvegarde_restauration_executee` : **FAIL, défaut du script** — `backup-restore-media.ps1` contenait
+  `((commande); $LASTEXITCODE -eq 0)`, deux instructions dans des parenthèses simples : erreur de syntaxe
+  PowerShell, le script n'a pas démarré. Corrigé ; attente de l'écoute TCP du PostgreSQL jetable
+  (l'image démarre d'abord un serveur temporaire sur socket local).
+
+*Second passage Windows E3 : à compléter.*
 
 ## 8. Registre des risques résiduels (2.2.3-e)
 
